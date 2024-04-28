@@ -1,2 +1,4 @@
-# yass
-Yet Another SAT Solver
+# YASS — Yet Another SAT Solver
+
+Work in progress 🏗️
+
