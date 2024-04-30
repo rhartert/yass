@@ -24,8 +24,10 @@ type Solver struct {
 	watchers  [][]Constraint
 	propQueue *Queue[Literal]
 
-	// Assignments.
-	assigns  []LBool
+	// Value assigned ot each literal.
+	assigns []LBool
+
+	// Trail.
 	trail    []Literal
 	trailLim []int
 	reason   []Constraint
@@ -116,7 +118,7 @@ func (s *Solver) NegativeLiteral(varID int) Literal {
 }
 
 func (s *Solver) NumVariables() int {
-	return len(s.assigns)
+	return len(s.assigns) / 2
 }
 
 func (s *Solver) NumAssigns() int {
@@ -132,16 +134,11 @@ func (s *Solver) NumLearnts() int {
 }
 
 func (s *Solver) VarValue(x int) LBool {
-	return s.assigns[x]
+	return s.assigns[s.PositiveLiteral(x)]
 }
 
 func (s *Solver) LitValue(l Literal) LBool {
-	lb := s.assigns[l.VarID()]
-	if l.IsPositive() {
-		return lb
-	} else {
-		return lb.Opposite()
-	}
+	return s.assigns[l]
 }
 
 func (s *Solver) AddVariable() int {
@@ -149,7 +146,11 @@ func (s *Solver) AddVariable() int {
 	s.watchers = append(s.watchers, nil)
 	s.watchers = append(s.watchers, nil)
 	s.reason = append(s.reason, nil)
+
+	// One for each literal.
 	s.assigns = append(s.assigns, Unknown)
+	s.assigns = append(s.assigns, Unknown)
+
 	s.level = append(s.level, -1)
 	s.activities = append(s.activities, 0)
 	s.order.NewVar()
@@ -242,9 +243,8 @@ func (s *Solver) Solve() LBool {
 	numConflicts := 100
 	numLearnts := s.NumConstraints() / 3
 	status := Unknown
-
-	s.startTime = time.Now()
 	s.order = NewVarOrder(s, s.NumVariables())
+	s.startTime = time.Now()
 
 	s.printSeparator()
 	s.printSearchHeader()
@@ -334,7 +334,8 @@ func (s *Solver) enqueue(l Literal, from Constraint) bool {
 	default:
 		// New fact, store it.
 		varID := l.VarID()
-		s.assigns[varID] = Lift(l.IsPositive())
+		s.assigns[l] = True
+		s.assigns[l.Opposite()] = False
 		s.level[varID] = s.decisionLevel()
 		s.reason[varID] = from
 		s.trail = append(s.trail, l)
@@ -353,7 +354,7 @@ func (s *Solver) explain(c Constraint, l Literal) []Literal {
 
 func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
 	l := Literal(-1) // unknown literal
-	seen := make([]bool, len(s.assigns))
+	seen := make([]bool, s.NumVariables())
 	counter := 0
 	backtrackLevel := 0
 
@@ -477,8 +478,9 @@ func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
 
 func (s *Solver) undoOne() {
 	l := s.trail[len(s.trail)-1]
+	s.assigns[l] = Unknown
+	s.assigns[l.Opposite()] = Unknown
 	v := l.VarID()
-	s.assigns[v] = Unknown
 	s.reason[v] = nil
 	s.level[v] = -1
 	s.order.Undo(v)
@@ -505,8 +507,9 @@ func (s *Solver) cancelUntil(level int) {
 }
 
 func (s *Solver) saveModel() {
-	model := make([]bool, len(s.assigns))
-	for i, lb := range s.assigns {
+	model := make([]bool, s.NumVariables())
+	for i := range model {
+		lb := s.VarValue(i)
 		if lb == Unknown {
 			panic("not a model")
 		}
