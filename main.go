@@ -24,6 +24,12 @@ var flagMemProfile = flag.Bool(
 	"save pprof memory profile in memprof",
 )
 
+var flagMaxConflict = flag.Int64(
+	"max_conflicts",
+	-1,
+	"maximum number of conflicts allowed to solve the problem (-1 = no maximum)",
+)
+
 func parseConfig() (*config, error) {
 	flag.Parse()
 
@@ -34,6 +40,7 @@ func parseConfig() (*config, error) {
 		instanceFile: flag.Arg(0),
 		memProfile:   *flagMemProfile,
 		cpuProfile:   *flagCPUProfile,
+		maxConflicts: *flagMaxConflict,
 	}, nil
 }
 
@@ -41,6 +48,15 @@ type config struct {
 	instanceFile string
 	memProfile   bool
 	cpuProfile   bool
+	maxConflicts int64
+}
+
+func solverOptions(cfg *config) sat.Options {
+	options := sat.DefaultOptions
+	if cfg.maxConflicts >= 0 {
+		options.MaxConflicts = cfg.maxConflicts
+	}
+	return options
 }
 
 func run(cfg *config) error {
@@ -49,7 +65,7 @@ func run(cfg *config) error {
 		return fmt.Errorf("could not parse instance: %s", err)
 	}
 
-	s := sat.NewDefaultSolver()
+	s := sat.NewSolver(solverOptions(cfg))
 	dimacs.Instantiate(s, instance)
 
 	fmt.Printf("c variables:  %d\n", instance.Variables)
@@ -62,6 +78,8 @@ func run(cfg *config) error {
 	fmt.Printf("c time (sec): %f\n", elapsed.Seconds())
 	fmt.Printf("c conflicts:  %d (%.2f /sec)\n", s.TotalConflicts, float64(s.TotalConflicts)/elapsed.Seconds())
 	fmt.Printf("c status:     %s\n", status.String())
+
+	s.PrintStats()
 
 	return nil
 }

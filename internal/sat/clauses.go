@@ -143,7 +143,7 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 		return true
 	}
 
-	// Look for a new literal to watch. If another a literal to true is found,
+	// Look for a new literal to watch. If another literal set to true is found,
 	// then the clause is already true.
 	for i := 2; i < len(c.literals); i++ {
 		if s.LitValue(c.literals[i]) != False {

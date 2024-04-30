@@ -40,8 +40,8 @@ type Solver struct {
 	startTime      time.Time
 
 	// Stop conditions.
-	timeout     time.Duration
 	hasStopCond bool
+	maxConflict int64
 
 	// Models.
 	Models [][]bool
@@ -62,12 +62,14 @@ type Solver struct {
 type Options struct {
 	ClauseDecay   float64
 	VariableDecay float64
-	MaxDuration   time.Duration
+
+	MaxConflicts int64
 }
 
 var DefaultOptions = Options{
 	ClauseDecay:   0.999,
 	VariableDecay: 0.95,
+	MaxConflicts:  -1,
 }
 
 // NewDefaultSolver returns a solver configured with default options. This is
@@ -85,9 +87,9 @@ func NewSolver(ops Options) *Solver {
 		propQueue:   NewQueue[Literal](128),
 	}
 
-	if ops.MaxDuration > 0 {
-		s.timeout = ops.MaxDuration
+	if ops.MaxConflicts >= 0 {
 		s.hasStopCond = true
+		s.maxConflict = ops.MaxConflicts
 	}
 
 	return s
@@ -97,7 +99,11 @@ func (s *Solver) shouldStop() bool {
 	if !s.hasStopCond {
 		return false
 	}
-	return time.Since(s.startTime) >= s.timeout
+	if s.maxConflict >= 0 && s.maxConflict <= s.TotalConflicts {
+		return true
+	}
+
+	return false
 }
 
 func (s *Solver) PositiveLiteral(varID int) Literal {
