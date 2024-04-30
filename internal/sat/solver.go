@@ -35,9 +35,10 @@ type Solver struct {
 	unsat bool
 
 	// Search statistics.
-	TotalConflicts int64
-	TotalRestarts  int64
-	startTime      time.Time
+	TotalConflicts  int64
+	TotalRestarts   int64
+	TotalIterations int64
+	startTime       time.Time
 
 	// Stop conditions.
 	hasStopCond bool
@@ -243,8 +244,11 @@ func (s *Solver) Solve() LBool {
 	status := Unknown
 
 	s.startTime = time.Now()
-
 	s.order = NewVarOrder(s, s.NumVariables())
+
+	s.printSeparator()
+	s.printSearchHeader()
+	s.printSeparator()
 
 	for status == Unknown {
 		status = s.Search(numConflicts, numLearnts)
@@ -255,6 +259,9 @@ func (s *Solver) Solve() LBool {
 			break
 		}
 	}
+
+	s.printSearchStats()
+	s.printSeparator()
 
 	s.cancelUntil(0)
 	return status
@@ -413,6 +420,11 @@ func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
 	conflictCount := 0
 
 	for !s.shouldStop() {
+		if s.TotalIterations%10000 == 0 {
+			s.printSearchStats()
+		}
+		s.TotalIterations++
+
 		if conflict := s.Propagate(); conflict != nil {
 			conflictCount++
 			s.TotalConflicts++
@@ -501,4 +513,22 @@ func (s *Solver) saveModel() {
 		model[i] = lb == True
 	}
 	s.Models = append(s.Models, model)
+}
+
+func (s *Solver) printSeparator() {
+	fmt.Println("c ---------------------------------------------------------------------------")
+}
+
+func (s *Solver) printSearchHeader() {
+	fmt.Println("c            time     iterations      conflicts       restarts        learnts")
+}
+
+func (s *Solver) printSearchStats() {
+	fmt.Printf(
+		"c %14.3fs %14d %14d %14d %14d\n",
+		time.Since(s.startTime).Seconds(),
+		s.TotalIterations,
+		s.TotalConflicts,
+		s.TotalRestarts,
+		len(s.learnts))
 }
