@@ -79,8 +79,6 @@ func run(cfg *config) error {
 	fmt.Printf("c conflicts:  %d (%.2f /sec)\n", s.TotalConflicts, float64(s.TotalConflicts)/elapsed.Seconds())
 	fmt.Printf("c status:     %s\n", status.String())
 
-	s.PrintStats()
-
 	return nil
 }
 
