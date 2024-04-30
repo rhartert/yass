@@ -253,7 +253,7 @@ func (s *Solver) Solve() LBool {
 	for status == Unknown {
 		status = s.Search(numConflicts, numLearnts)
 		numConflicts += numConflicts / 10
-		numLearnts += numLearnts / 10
+		numLearnts += numLearnts / 20
 
 		if s.shouldStop() {
 			break
