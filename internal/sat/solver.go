@@ -33,6 +33,14 @@ type Solver struct {
 	reason   []Constraint
 	level    []int
 
+	// Last timestamp at which a boolean variable was seen. This is effectively
+	// used as a slice of boolean by the conflict analyze algorithm. Precisely,
+	// a variable v is considered "seen" if seenAt[v] == seemTimestamp. All the
+	// variables can efficiently be marked as "not seen" in constant time by
+	// increasing the timestamp.
+	seenAt        []uint64
+	seenTimestamp uint64
+
 	// Whether the problem has reached a top level conflict.
 	unsat bool
 
@@ -146,6 +154,7 @@ func (s *Solver) AddVariable() int {
 	s.watchers = append(s.watchers, nil)
 	s.watchers = append(s.watchers, nil)
 	s.reason = append(s.reason, nil)
+	s.seenAt = append(s.seenAt, 0)
 
 	// One for each literal.
 	s.assigns = append(s.assigns, Unknown)
@@ -353,8 +362,8 @@ func (s *Solver) explain(c Constraint, l Literal) []Literal {
 }
 
 func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
+	s.resetSeen()
 	l := Literal(-1) // unknown literal
-	seen := make([]bool, s.NumVariables())
 	counter := 0
 	backtrackLevel := 0
 
@@ -365,11 +374,11 @@ func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
 		// Trace reason.
 		for _, q := range s.explain(confl, l) {
 			v := q.VarID()
-			if seen[v] {
+			if s.isSeen(v) {
 				continue
 			}
 
-			seen[v] = true
+			s.markSeen(v)
 			if s.level[v] == s.decisionLevel() {
 				counter++
 				continue
@@ -384,9 +393,10 @@ func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
 		// Select next literal to look at.
 		for {
 			l = s.trail[len(s.trail)-1]
-			confl = s.reason[l.VarID()]
+			v := l.VarID()
+			confl = s.reason[v]
 			s.undoOne()
-			if seen[l.VarID()] {
+			if s.isSeen(v) {
 				break
 			}
 		}
@@ -402,6 +412,28 @@ func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
 	copy(learnts[1:], s.tmpLearnts)
 
 	return learnts, backtrackLevel
+}
+
+// isSeen returns true if v has been marked as seen since the last time
+// resetSeen was called.
+func (s *Solver) isSeen(v int) bool {
+	return s.seenAt[v] == s.seenTimestamp
+}
+
+// markSeen marks v as seen. It will remain seen until resetSeen is called.
+func (s *Solver) markSeen(v int) {
+	s.seenAt[v] = s.seenTimestamp
+}
+
+// resetSeen marks all variables as "not seen" in amortized constant time.
+func (s *Solver) resetSeen() {
+	s.seenTimestamp++
+	if s.seenTimestamp == 0 { // overflow
+		s.seenTimestamp = 1
+		for i := range s.seenAt {
+			s.seenAt[i] = 0
+		}
+	}
 }
 
 func (s *Solver) record(clause []Literal) {
