@@ -30,6 +30,12 @@ var flagMaxConflict = flag.Int64(
 	"maximum number of conflicts allowed to solve the problem (-1 = no maximum)",
 )
 
+var flagTimeout = flag.Duration(
+	"timeout",
+	-1,
+	"search timeout (-1 = no timeout)",
+)
+
 func parseConfig() (*config, error) {
 	flag.Parse()
 
@@ -41,6 +47,7 @@ func parseConfig() (*config, error) {
 		memProfile:   *flagMemProfile,
 		cpuProfile:   *flagCPUProfile,
 		maxConflicts: *flagMaxConflict,
+		timeout:      *flagTimeout,
 	}, nil
 }
 
@@ -49,12 +56,16 @@ type config struct {
 	memProfile   bool
 	cpuProfile   bool
 	maxConflicts int64
+	timeout      time.Duration
 }
 
 func solverOptions(cfg *config) sat.Options {
 	options := sat.DefaultOptions
 	if cfg.maxConflicts >= 0 {
 		options.MaxConflicts = cfg.maxConflicts
+	}
+	if cfg.timeout >= 0 {
+		options.Timeout = cfg.timeout
 	}
 	return options
 }
