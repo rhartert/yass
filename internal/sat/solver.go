@@ -99,6 +99,8 @@ func NewSolver(ops Options) *Solver {
 		clauseInc:   0.1,
 		varInc:      0.1,
 		propQueue:   NewQueue[Literal](128),
+		maxConflict: -1,
+		timeout:     -1,
 	}
 
 	if ops.MaxConflicts >= 0 {
