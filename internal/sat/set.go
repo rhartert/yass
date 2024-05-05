@@ -3,40 +3,35 @@ package sat
 type ResetSet struct {
 	// Last timestamp at which a boolean variable was seen. This is effectively
 	// used as a slice of boolean by the conflict analyze algorithm. Precisely,
-	// a variable v is considered "seen" if seenAt[v] == seemTimestamp. All the
-	// variables can efficiently be marked as "not seen" in constant time by
-	// increasing the timestamp.
-	seenAt        []uint64
-	seenTimestamp uint64
+	// a variable v is considered "seen" if addedAt[v] == addedTimestamp. All
+	// the variables can efficiently be marked as "not seen" in constant time
+	// by increasing the timestamp.
+	addedAt        []uint64
+	addedTimestamp uint64
 }
 
-// Contains returns true if v has been marked as seen since the last time
-// resetSeen was called.
-func (rs *ResetSet) Contains(i int) bool {
-	return rs.seenAt[i] == rs.seenTimestamp
+// Contains returns true if v is in the set.
+func (rs *ResetSet) Contains(v int) bool {
+	return rs.addedAt[v] == rs.addedTimestamp
 }
 
-// Add marks v as seen. It will remain seen until resetSeen is called.
-func (rs *ResetSet) Add(i int) {
-	rs.seenAt[i] = rs.seenTimestamp
+// Add adds v to the set.
+func (rs *ResetSet) Add(v int) {
+	rs.addedAt[v] = rs.addedTimestamp
 }
 
-func (rs *ResetSet) Remove(i int) {
-	rs.seenAt[i] = rs.seenTimestamp - 1
-}
-
-// Reset marks all variables as "not seen" in amortized constant time.
-func (rs *ResetSet) Reset() {
-	rs.seenTimestamp++
-	if rs.seenTimestamp == 0 { // overflow
-		rs.seenTimestamp = 1
-		for i := range rs.seenAt {
-			rs.seenAt[i] = 0
+// Clear removes all the elements in the set in constant time.
+func (rs *ResetSet) Clear() {
+	rs.addedTimestamp++
+	if rs.addedTimestamp == 0 { // overflow
+		rs.addedTimestamp = 1
+		for i := range rs.addedAt {
+			rs.addedAt[i] = 0
 		}
 	}
 }
 
-// Expand increases the size of the set.
+// Expand increases the capacity of the set.
 func (rs *ResetSet) Expand() {
-	rs.seenAt = append(rs.seenAt, 0)
+	rs.addedAt = append(rs.addedAt, 0)
 }

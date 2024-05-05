@@ -9,13 +9,11 @@ import (
 
 type Solver struct {
 	// Clause database.
-	constraints []Constraint
+	constraints []*Clause
 	learnts     []*Clause
 	clauseInc   float64
 	clauseDecay float64
 
-	// Reduce the DB every 20000 + x * nextRecudeIncr conflicts where x is
-	// the number of time the DB was reduced (starting at 0).
 	nextReduce     int64
 	nextReduceIncr int64
 
@@ -26,7 +24,7 @@ type Solver struct {
 	order      *VarOrder
 
 	// Propagation and watchers.
-	watchers  [][]Constraint
+	watchers  [][]*Clause
 	propQueue *Queue[Literal]
 
 	// Value assigned ot each literal.
@@ -35,16 +33,8 @@ type Solver struct {
 	// Trail.
 	trail    []Literal
 	trailLim []int
-	reason   []Constraint
+	reason   []*Clause
 	level    []int
-
-	// Last timestamp at which a boolean variable was seen. This is effectively
-	// used as a slice of boolean by the conflict analyze algorithm. Precisely,
-	// a variable v is considered "seen" if seenAt[v] == seemTimestamp. All the
-	// variables can efficiently be marked as "not seen" in constant time by
-	// increasing the timestamp.
-	seenAt        []uint64
-	seenTimestamp uint64
 
 	// Whether the problem has reached a top level conflict.
 	unsat bool
@@ -65,7 +55,7 @@ type Solver struct {
 
 	// Temporary slice used in the Propagate function. The slice is re-used by
 	// all Propagate calls to avoid unnecessarily allocating new slices.
-	tmpWatchers []Constraint
+	tmpWatchers []*Clause
 
 	// Temporary slice used in Analyze to accumulate literals before these are
 	// used to create a new learnt clause. Having one shared buffer between all
@@ -76,6 +66,7 @@ type Solver struct {
 	tmpReason []Literal
 
 	seenLevel *ResetSet
+	seenVar   *ResetSet
 }
 
 type Options struct {
@@ -108,9 +99,10 @@ func NewSolver(ops Options) *Solver {
 		propQueue:      NewQueue[Literal](128),
 		maxConflict:    -1,
 		timeout:        -1,
-		nextReduce:     20000,
-		nextReduceIncr: 1000,
+		nextReduce:     4000,
+		nextReduceIncr: 300,
 		seenLevel:      &ResetSet{},
+		seenVar:        &ResetSet{},
 	}
 
 	if ops.MaxConflicts >= 0 {
@@ -176,7 +168,8 @@ func (s *Solver) AddVariable() int {
 	s.watchers = append(s.watchers, nil)
 	s.watchers = append(s.watchers, nil)
 	s.reason = append(s.reason, nil)
-	s.seenAt = append(s.seenAt, 0)
+
+	s.seenVar.Expand()
 	s.seenLevel.Expand()
 
 	// One for each literal.
@@ -293,10 +286,9 @@ func (s *Solver) ReduceDB() {
 	}
 
 	// fmt.Printf(
-	// 	"c before: lbd %.2f size %.2f med %d, after lbd %.2f size %.2f\n",
+	// 	"c before: lbd %.2f size %.2f, after lbd %.2f size %.2f\n",
 	// 	float64(totalLBD)/float64(i),
 	// 	float64(totalSize)/float64(i),
-	// 	med,
 	// 	float64(keptLBD)/float64(j),
 	// 	float64(keptSize)/float64(j),
 	// )
@@ -310,7 +302,6 @@ func (s *Solver) decisionLevel() int {
 
 func (s *Solver) Solve() LBool {
 	numConflicts := 100
-	numLearnts := s.NumConstraints() / 3
 	status := Unknown
 	s.order = NewVarOrder(s, s.NumVariables())
 	s.startTime = time.Now()
@@ -320,9 +311,8 @@ func (s *Solver) Solve() LBool {
 	s.printSeparator()
 
 	for status == Unknown {
-		status = s.Search(numConflicts, numLearnts)
+		status = s.Search(numConflicts)
 		numConflicts += 1000
-		numLearnts += numLearnts / 20
 
 		if s.shouldStop() {
 			break
@@ -369,7 +359,7 @@ func (s *Solver) DecayActivities() {
 	s.DecayVarActivity()
 }
 
-func (s *Solver) Propagate() Constraint {
+func (s *Solver) Propagate() *Clause {
 	for s.propQueue.Size() > 0 {
 		l := s.propQueue.Pop()
 
@@ -394,7 +384,7 @@ func (s *Solver) Propagate() Constraint {
 	return nil
 }
 
-func (s *Solver) enqueue(l Literal, from Constraint) bool {
+func (s *Solver) enqueue(l Literal, from *Clause) bool {
 	switch v := s.LitValue(l); v {
 	case False:
 		return false // conflicting assignment
@@ -413,7 +403,7 @@ func (s *Solver) enqueue(l Literal, from Constraint) bool {
 	}
 }
 
-func (s *Solver) explain(c Constraint, l Literal) []Literal {
+func (s *Solver) explain(c *Clause, l Literal) []Literal {
 	if l == -1 {
 		return c.ExplainFailure(s)
 	} else {
@@ -421,50 +411,54 @@ func (s *Solver) explain(c Constraint, l Literal) []Literal {
 	}
 }
 
-func (s *Solver) analyze(confl Constraint) ([]Literal, int, int) {
-	s.resetSeen()
-	l := Literal(-1) // unknown literal
+func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
+	s.seenVar.Clear()
 	counter := 0
 	backtrackLevel := 0
 
 	// Note that the first element is already reserved.
 	s.tmpLearnts = s.tmpLearnts[:0]
 
-	s.seenLevel.Reset()
-	lbd := 0
+	// Next literal to look at.
+	nextLiteral := len(s.trail) - 1
+
+	l := Literal(-1) // unknown literal
 
 	for {
 		// Trace reason.
 		for _, q := range s.explain(confl, l) {
 			v := q.VarID()
-			if s.isSeen(v) {
+			if s.seenVar.Contains(v) {
 				continue
 			}
 
-			s.markSeen(v)
+			s.seenVar.Add(v)
 			if s.level[v] == s.decisionLevel() {
 				counter++
 				continue
 			}
 
 			s.tmpLearnts = append(s.tmpLearnts, q.Opposite())
-			level := s.level[v]
-			if !s.seenLevel.Contains(level) {
-				s.seenLevel.Add(level)
-				lbd++
-			}
-			if level > backtrackLevel {
+			if level := s.level[v]; level > backtrackLevel {
 				backtrackLevel = level
 			}
 		}
 
+		if confl.learnt && confl.lbd > 2 {
+			newLBD := s.computeLBD(confl.literals)
+			if newLBD < 30 && newLBD < confl.lbd {
+				confl.protected = true
+			}
+			confl.lbd = newLBD
+		}
+
 		// Select next literal to look at.
 		for {
-			l = s.trail[len(s.trail)-1]
+			l = s.trail[nextLiteral]
+			nextLiteral--
 			v := l.VarID()
 			confl = s.reason[v]
-			s.undoOne()
-			if s.isSeen(v) {
+			if s.seenVar.Contains(v) {
 				break
 			}
 		}
@@ -479,29 +473,22 @@ func (s *Solver) analyze(confl Constraint) ([]Literal, int, int) {
 	learnts[0] = l.Opposite()
 	copy(learnts[1:], s.tmpLearnts)
 
+	lbd := s.computeLBD(learnts)
+
 	return learnts, lbd, backtrackLevel
 }
 
-// isSeen returns true if v has been marked as seen since the last time
-// resetSeen was called.
-func (s *Solver) isSeen(v int) bool {
-	return s.seenAt[v] == s.seenTimestamp
-}
-
-// markSeen marks v as seen. It will remain seen until resetSeen is called.
-func (s *Solver) markSeen(v int) {
-	s.seenAt[v] = s.seenTimestamp
-}
-
-// resetSeen marks all variables as "not seen" in amortized constant time.
-func (s *Solver) resetSeen() {
-	s.seenTimestamp++
-	if s.seenTimestamp == 0 { // overflow
-		s.seenTimestamp = 1
-		for i := range s.seenAt {
-			s.seenAt[i] = 0
+func (s *Solver) computeLBD(literals []Literal) int {
+	lbd := 0
+	s.seenLevel.Clear()
+	for _, lit := range literals {
+		l := s.level[lit.VarID()]
+		if !s.seenLevel.Contains(l) {
+			s.seenLevel.Add(l)
+			lbd++
 		}
 	}
+	return lbd
 }
 
 func (s *Solver) record(clause []Literal, lbd int) {
@@ -513,7 +500,7 @@ func (s *Solver) record(clause []Literal, lbd int) {
 	}
 }
 
-func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
+func (s *Solver) Search(nConflicts int) LBool {
 	if s.unsat {
 		return False
 	}
@@ -552,7 +539,7 @@ func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
 		// -----------
 
 		if s.TotalConflicts >= s.nextReduce {
-			s.nextReduce += s.nextReduceIncr
+			s.nextReduce += (s.nextReduceIncr) * s.TotalRestarts
 			s.ReduceDB()
 		}
 
