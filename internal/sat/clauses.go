@@ -18,6 +18,9 @@ type Clause struct {
 
 	// The clause's literals. Must always contain at least two literals.
 	literals []Literal
+
+	lbd       int
+	protected bool
 }
 
 func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {

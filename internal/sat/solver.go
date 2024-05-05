@@ -14,6 +14,11 @@ type Solver struct {
 	clauseInc   float64
 	clauseDecay float64
 
+	// Reduce the DB every 20000 + x * nextRecudeIncr conflicts where x is
+	// the number of time the DB was reduced (starting at 0).
+	nextReduce     int64
+	nextReduceIncr int64
+
 	// Variable ordering.
 	activities []float64
 	varInc     float64
@@ -69,6 +74,8 @@ type Solver struct {
 
 	// Used for clause to explain themselves.
 	tmpReason []Literal
+
+	seenLevel *ResetSet
 }
 
 type Options struct {
@@ -94,13 +101,16 @@ func NewDefaultSolver() *Solver {
 
 func NewSolver(ops Options) *Solver {
 	s := &Solver{
-		clauseDecay: ops.ClauseDecay,
-		varDecay:    ops.VariableDecay,
-		clauseInc:   0.1,
-		varInc:      0.1,
-		propQueue:   NewQueue[Literal](128),
-		maxConflict: -1,
-		timeout:     -1,
+		clauseDecay:    ops.ClauseDecay,
+		varDecay:       ops.VariableDecay,
+		clauseInc:      0.1,
+		varInc:         0.1,
+		propQueue:      NewQueue[Literal](128),
+		maxConflict:    -1,
+		timeout:        -1,
+		nextReduce:     20000,
+		nextReduceIncr: 1000,
+		seenLevel:      &ResetSet{},
 	}
 
 	if ops.MaxConflicts >= 0 {
@@ -167,6 +177,7 @@ func (s *Solver) AddVariable() int {
 	s.watchers = append(s.watchers, nil)
 	s.reason = append(s.reason, nil)
 	s.seenAt = append(s.seenAt, 0)
+	s.seenLevel.Expand()
 
 	// One for each literal.
 	s.assigns = append(s.assigns, Unknown)
@@ -228,30 +239,67 @@ func (s *Solver) Simplify() bool {
 }
 
 func (s *Solver) ReduceDB() {
-	lim := s.clauseInc / float64(len(s.learnts))
-
+	// Sort clause from "the worst" to "the best".
 	sort.Slice(s.learnts, func(i, j int) bool {
-		return s.learnts[i].activity < s.learnts[j].activity
+		ci := s.learnts[i]
+		cj := s.learnts[j]
+
+		switch {
+		case len(ci.literals) > 2 && len(cj.literals) == 2:
+			return true
+		case ci.lbd > cj.lbd:
+			return true
+		case ci.activity < cj.activity:
+			return true
+		default:
+			return false
+		}
 	})
 
+	// Protect the 10% best clause.
+	for i := len(s.learnts) * 90 / 100; i < len(s.learnts); i++ {
+		s.learnts[i].protected = true
+	}
+
+	toDelete := len(s.learnts) / 2
+
+	totalLBD := 0
+	totalSize := 0
+	keptLBD := 0
+	keptSize := 0
+
 	i, j := 0, 0
-	for ; i < len(s.learnts)/2; i++ {
-		if s.learnts[i].locked(s) {
+	for ; i < len(s.learnts); i++ {
+		c := s.learnts[i]
+
+		totalLBD += c.lbd
+		totalSize += len(c.literals)
+
+		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.protected {
+			toDelete--
+			c.Remove(s)
+		} else {
+
+			keptLBD += c.lbd
+			keptSize += len(c.literals)
+
+			if c.protected {
+				c.protected = false
+				toDelete++
+			}
 			s.learnts[j] = s.learnts[i]
 			j++
-		} else {
-			s.learnts[i].Remove(s)
 		}
 	}
 
-	for ; i < len(s.learnts); i++ {
-		if !s.learnts[i].locked(s) && s.learnts[i].activity < lim {
-			s.learnts[i].Remove(s)
-		} else {
-			s.learnts[j] = s.learnts[i]
-			j++
-		}
-	}
+	// fmt.Printf(
+	// 	"c before: lbd %.2f size %.2f med %d, after lbd %.2f size %.2f\n",
+	// 	float64(totalLBD)/float64(i),
+	// 	float64(totalSize)/float64(i),
+	// 	med,
+	// 	float64(keptLBD)/float64(j),
+	// 	float64(keptSize)/float64(j),
+	// )
 
 	s.learnts = s.learnts[:j]
 }
@@ -273,7 +321,7 @@ func (s *Solver) Solve() LBool {
 
 	for status == Unknown {
 		status = s.Search(numConflicts, numLearnts)
-		numConflicts += numConflicts / 10
+		numConflicts += 1000
 		numLearnts += numLearnts / 20
 
 		if s.shouldStop() {
@@ -373,7 +421,7 @@ func (s *Solver) explain(c Constraint, l Literal) []Literal {
 	}
 }
 
-func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
+func (s *Solver) analyze(confl Constraint) ([]Literal, int, int) {
 	s.resetSeen()
 	l := Literal(-1) // unknown literal
 	counter := 0
@@ -381,6 +429,9 @@ func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
 
 	// Note that the first element is already reserved.
 	s.tmpLearnts = s.tmpLearnts[:0]
+
+	s.seenLevel.Reset()
+	lbd := 0
 
 	for {
 		// Trace reason.
@@ -397,7 +448,12 @@ func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
 			}
 
 			s.tmpLearnts = append(s.tmpLearnts, q.Opposite())
-			if level := s.level[v]; level > backtrackLevel {
+			level := s.level[v]
+			if !s.seenLevel.Contains(level) {
+				s.seenLevel.Add(level)
+				lbd++
+			}
+			if level > backtrackLevel {
 				backtrackLevel = level
 			}
 		}
@@ -423,7 +479,7 @@ func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
 	learnts[0] = l.Opposite()
 	copy(learnts[1:], s.tmpLearnts)
 
-	return learnts, backtrackLevel
+	return learnts, lbd, backtrackLevel
 }
 
 // isSeen returns true if v has been marked as seen since the last time
@@ -448,11 +504,12 @@ func (s *Solver) resetSeen() {
 	}
 }
 
-func (s *Solver) record(clause []Literal) {
+func (s *Solver) record(clause []Literal, lbd int) {
 	c, _ := NewClause(s, clause, true)
 	s.enqueue(clause[0], c)
 	if c != nil {
 		s.learnts = append(s.learnts, c)
+		c.lbd = lbd
 	}
 }
 
@@ -465,7 +522,7 @@ func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
 	conflictCount := 0
 
 	for !s.shouldStop() {
-		if s.TotalIterations%10000 == 0 {
+		if s.TotalIterations%100000 == 0 {
 			s.printSearchStats()
 		}
 		s.TotalIterations++
@@ -479,14 +536,14 @@ func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
 				return False
 			}
 
-			learntClause, backtrackLevel := s.analyze(conflict)
+			learntClause, lbd, backtrackLevel := s.analyze(conflict)
 			if backtrackLevel > 0 {
 				s.cancelUntil(backtrackLevel)
 			} else {
 				s.cancelUntil(0)
 			}
 
-			s.record(learntClause)
+			s.record(learntClause, lbd)
 			s.DecayActivities()
 			continue
 		}
@@ -494,12 +551,13 @@ func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
 		// No Conflict
 		// -----------
 
-		if s.decisionLevel() == 0 {
-			s.Simplify()
+		if s.TotalConflicts >= s.nextReduce {
+			s.nextReduce += s.nextReduceIncr
+			s.ReduceDB()
 		}
 
-		if len(s.learnts)-s.NumAssigns() >= nLearnts {
-			s.ReduceDB()
+		if s.decisionLevel() == 0 {
+			s.Simplify()
 		}
 
 		if s.NumAssigns() == s.NumVariables() { // solution found
