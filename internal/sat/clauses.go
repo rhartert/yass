@@ -4,14 +4,6 @@ import (
 	"strings"
 )
 
-type Constraint interface {
-	Remove(s *Solver)
-	Simplify(s *Solver) bool
-	Propagate(s *Solver, l Literal) bool
-	ExplainAssign(s *Solver, l Literal) []Literal
-	ExplainFailure(s *Solver) []Literal
-}
-
 type Clause struct {
 	learnt   bool
 	activity float64

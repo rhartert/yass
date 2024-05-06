@@ -9,7 +9,7 @@ import (
 
 type Solver struct {
 	// Clause database.
-	constraints []Constraint
+	constraints []*Clause
 	learnts     []*Clause
 	clauseInc   float64
 	clauseDecay float64
@@ -21,7 +21,7 @@ type Solver struct {
 	order      *VarOrder
 
 	// Propagation and watchers.
-	watchers  [][]Constraint
+	watchers  [][]*Clause
 	propQueue *Queue[Literal]
 
 	// Value assigned ot each literal.
@@ -30,7 +30,7 @@ type Solver struct {
 	// Trail.
 	trail    []Literal
 	trailLim []int
-	reason   []Constraint
+	reason   []*Clause
 	level    []int
 
 	// Last timestamp at which a boolean variable was seen. This is effectively
@@ -60,7 +60,7 @@ type Solver struct {
 
 	// Temporary slice used in the Propagate function. The slice is re-used by
 	// all Propagate calls to avoid unnecessarily allocating new slices.
-	tmpWatchers []Constraint
+	tmpWatchers []*Clause
 
 	// Temporary slice used in Analyze to accumulate literals before these are
 	// used to create a new learnt clause. Having one shared buffer between all
@@ -321,7 +321,7 @@ func (s *Solver) DecayActivities() {
 	s.DecayVarActivity()
 }
 
-func (s *Solver) Propagate() Constraint {
+func (s *Solver) Propagate() *Clause {
 	for s.propQueue.Size() > 0 {
 		l := s.propQueue.Pop()
 
@@ -346,7 +346,7 @@ func (s *Solver) Propagate() Constraint {
 	return nil
 }
 
-func (s *Solver) enqueue(l Literal, from Constraint) bool {
+func (s *Solver) enqueue(l Literal, from *Clause) bool {
 	switch v := s.LitValue(l); v {
 	case False:
 		return false // conflicting assignment
@@ -365,7 +365,7 @@ func (s *Solver) enqueue(l Literal, from Constraint) bool {
 	}
 }
 
-func (s *Solver) explain(c Constraint, l Literal) []Literal {
+func (s *Solver) explain(c *Clause, l Literal) []Literal {
 	if l == -1 {
 		return c.ExplainFailure(s)
 	} else {
@@ -373,7 +373,7 @@ func (s *Solver) explain(c Constraint, l Literal) []Literal {
 	}
 }
 
-func (s *Solver) analyze(confl Constraint) ([]Literal, int) {
+func (s *Solver) analyze(confl *Clause) ([]Literal, int) {
 	s.resetSeen()
 	l := Literal(-1) // unknown literal
 	counter := 0
