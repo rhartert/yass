@@ -5,14 +5,23 @@ import (
 )
 
 type Clause struct {
-	learnt   bool
 	activity float64
 
 	// The clause's literals. Must always contain at least two literals.
 	literals []Literal
 
-	lbd       int
-	protected bool
+	// Learnt clause properties
+	// ------------------------
+
+	// Whether the clause was learnt or not.
+	learnt bool
+
+	// The literal block distance used to estimate the quality of the clause.
+	lbd int
+
+	// If true, the clause will not be deleted in the next clause DB clean up.
+	// This is only relevant to learnt clauses.
+	isProtected bool
 }
 
 func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {

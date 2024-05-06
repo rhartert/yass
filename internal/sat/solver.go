@@ -241,7 +241,7 @@ func (s *Solver) Simplify() bool {
 }
 
 func (s *Solver) ReduceDB() {
-	// Sort clause from "the worst" to "the best".
+	// Sort learnt clauses from "the worst" to "the best".
 	sort.Slice(s.learnts, func(i, j int) bool {
 		ci := s.learnts[i]
 		cj := s.learnts[j]
@@ -260,47 +260,27 @@ func (s *Solver) ReduceDB() {
 
 	// Protect the 10% best clause.
 	for i := len(s.learnts) * 90 / 100; i < len(s.learnts); i++ {
-		s.learnts[i].protected = true
+		s.learnts[i].isProtected = true
 	}
 
 	toDelete := len(s.learnts) / 2
-
-	totalLBD := 0
-	totalSize := 0
-	keptLBD := 0
-	keptSize := 0
 
 	i, j := 0, 0
 	for ; i < len(s.learnts); i++ {
 		c := s.learnts[i]
 
-		totalLBD += c.lbd
-		totalSize += len(c.literals)
-
-		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.protected {
+		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.isProtected {
 			toDelete--
 			c.Remove(s)
 		} else {
-
-			keptLBD += c.lbd
-			keptSize += len(c.literals)
-
-			if c.protected {
-				c.protected = false
+			if c.isProtected {
+				c.isProtected = false
 				toDelete++
 			}
 			s.learnts[j] = s.learnts[i]
 			j++
 		}
 	}
-
-	// fmt.Printf(
-	// 	"c before: lbd %.2f size %.2f, after lbd %.2f size %.2f\n",
-	// 	float64(totalLBD)/float64(i),
-	// 	float64(totalSize)/float64(i),
-	// 	float64(keptLBD)/float64(j),
-	// 	float64(keptSize)/float64(j),
-	// )
 
 	s.learnts = s.learnts[:j]
 }
@@ -421,21 +401,25 @@ func (s *Solver) explain(c *Clause, l Literal) []Literal {
 }
 
 func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
-	s.seenVar.Clear()
-	counter := 0
-	backtrackLevel := 0
+	// Current number of "implication" nodes in exploration of the decision
+	// level. A value of 0 indicates that the exploration has reached a single
+	// implication point.
+	nImplicationPoints := 0
 
-	// Note that the first element is already reserved.
+	// Empty the buffer of literals in which the learnt clause will be stored.
+	// Note position of the first literal is reserved for the FUIP.
 	s.tmpLearnts = s.tmpLearnts[:0]
 	s.tmpLearnts = append(s.tmpLearnts, -1)
 
-	// Next literal to look at.
+	// Next literal to look at. This is used to iterate over the trail without
+	// actually undoing the literal assignments.
 	nextLiteral := len(s.trail) - 1
 
-	l := Literal(-1) // unknown literal
+	l := Literal(-1) // unknown literal used to represent the conflict
+	s.seenVar.Clear()
+	backtrackLevel := 0
 
 	for {
-		// Trace reason.
 		for _, q := range s.explain(confl, l) {
 			v := q.VarID()
 			if s.seenVar.Contains(v) {
@@ -444,7 +428,7 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 
 			s.seenVar.Add(v)
 			if s.level[v] == s.decisionLevel() {
-				counter++
+				nImplicationPoints++
 				continue
 			}
 
@@ -455,9 +439,14 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 		}
 
 		if confl.learnt && confl.lbd > 2 {
+			// Opportunistically recompute the LBD of the clause as all its
+			// literals are guaranteed to be assigned at this point.
 			newLBD := s.computeLBD(confl.literals)
+
+			// Clauses with an improving LBD are considered interesting and
+			// worth protecting for a round.
 			if newLBD < 30 && newLBD < confl.lbd {
-				confl.protected = true
+				confl.isProtected = true
 			}
 			confl.lbd = newLBD
 		}
@@ -473,19 +462,20 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 			}
 		}
 
-		counter--
-		if counter <= 0 {
+		nImplicationPoints--
+		if nImplicationPoints <= 0 {
 			break
 		}
 	}
 
 	s.tmpLearnts[0] = l.Opposite()
-
 	lbd := s.computeLBD(s.tmpLearnts)
 
 	return s.tmpLearnts, lbd, backtrackLevel
 }
 
+// computeLBD returns the LBD (Literal Block Distance) of the given sequence of
+// literals. All literals in the sequence must be assigned.
 func (s *Solver) computeLBD(literals []Literal) int {
 	lbd := 0
 	s.seenLevel.Clear()
