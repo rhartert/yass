@@ -1,11 +1,8 @@
 package sat
 
+// ResetSet represents a set of integers from 0 to N-1 where N is the capacity
+// of the set.
 type ResetSet struct {
-	// Last timestamp at which a boolean variable was seen. This is effectively
-	// used as a slice of boolean by the conflict analyze algorithm. Precisely,
-	// a variable v is considered "seen" if addedAt[v] == addedTimestamp. All
-	// the variables can efficiently be marked as "not seen" in constant time
-	// by increasing the timestamp.
 	addedAt        []uint64
 	addedTimestamp uint64
 }

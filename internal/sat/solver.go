@@ -65,8 +65,15 @@ type Solver struct {
 	// Used for clause to explain themselves.
 	tmpReason []Literal
 
+	// Shared by operation that needs to put variables in a set and empty that
+	// set efficiently.
+	seenVar *ResetSet
+
+	// Shared by operation that needs to put the decision levels in a set and
+	// empty that set efficiently. This could technically be done using seenVar
+	// but some operations (e.g. analyze) needs to maintain both set at the same
+	// time.
 	seenLevel *ResetSet
-	seenVar   *ResetSet
 }
 
 type Options struct {
