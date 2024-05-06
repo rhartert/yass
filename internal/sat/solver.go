@@ -103,6 +103,8 @@ func NewSolver(ops Options) *Solver {
 		nextReduceIncr: 300,
 		seenLevel:      &ResetSet{},
 		seenVar:        &ResetSet{},
+		tmpLearnts:     make([]Literal, 0, 32),
+		tmpReason:      make([]Literal, 0, 32),
 	}
 
 	if ops.MaxConflicts >= 0 {
@@ -418,6 +420,7 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 
 	// Note that the first element is already reserved.
 	s.tmpLearnts = s.tmpLearnts[:0]
+	s.tmpLearnts = append(s.tmpLearnts, -1)
 
 	// Next literal to look at.
 	nextLiteral := len(s.trail) - 1
@@ -469,13 +472,11 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 		}
 	}
 
-	learnts := make([]Literal, len(s.tmpLearnts)+1)
-	learnts[0] = l.Opposite()
-	copy(learnts[1:], s.tmpLearnts)
+	s.tmpLearnts[0] = l.Opposite()
 
-	lbd := s.computeLBD(learnts)
+	lbd := s.computeLBD(s.tmpLearnts)
 
-	return learnts, lbd, backtrackLevel
+	return s.tmpLearnts, lbd, backtrackLevel
 }
 
 func (s *Solver) computeLBD(literals []Literal) int {

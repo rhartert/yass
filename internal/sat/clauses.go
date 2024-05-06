@@ -9,6 +9,7 @@ type Clause struct {
 	activity float64
 
 	// The clause's literals. Must always contain at least two literals.
+	sliceRef *[]Literal
 	literals []Literal
 
 	lbd       int
@@ -16,9 +17,9 @@ type Clause struct {
 }
 
 func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
+	size := len(literals)
 
 	if !learnt {
-		size := len(literals)
 		seen := map[Literal]struct{}{}
 
 		for i := size - 1; i >= 0; i-- {
@@ -48,42 +49,42 @@ func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
 		literals = literals[:size]
 	}
 
-	switch len(literals) {
-	case 0:
+	if size == 0 {
 		// Empty clauses cannot be valid.
 		return nil, false
-	case 1:
+	}
+
+	if size == 1 {
 		// Directly enqueue unit facts.
 		return nil, s.enqueue(literals[0], nil)
-	default:
-		// Actually create the clause.
-		c := &Clause{}
-		c.literals = literals
-		c.learnt = learnt
+	}
 
-		if learnt {
-			maxLevel := -1
-			wl := -1
-			for i := 1; i < len(c.literals); i++ {
-				if level := s.level[c.literals[i].VarID()]; level > maxLevel {
-					maxLevel = level
-					wl = i
-				}
-			}
-			c.literals[wl], c.literals[1] = c.literals[1], c.literals[wl]
+	// Actually create the clause.
+	c := newClause(literals, learnt)
 
-			// Bumping.
-			s.BumpClaActivity(c)
-			for _, l := range c.literals {
-				s.BumpVarActivity(l)
+	if learnt {
+		maxLevel := -1
+		wl := -1
+		for i := 1; i < len(c.literals); i++ {
+			if level := s.level[c.literals[i].VarID()]; level > maxLevel {
+				maxLevel = level
+				wl = i
 			}
 		}
+		c.literals[wl], c.literals[1] = c.literals[1], c.literals[wl]
 
-		s.watchers[c.literals[0].Opposite()] = append(s.watchers[c.literals[0].Opposite()], c)
-		s.watchers[c.literals[1].Opposite()] = append(s.watchers[c.literals[1].Opposite()], c)
-
-		return c, true
+		// Bumping.
+		s.BumpClaActivity(c)
+		for _, l := range c.literals {
+			s.BumpVarActivity(l)
+		}
 	}
+
+	s.watchers[c.literals[0].Opposite()] = append(s.watchers[c.literals[0].Opposite()], c)
+	s.watchers[c.literals[1].Opposite()] = append(s.watchers[c.literals[1].Opposite()], c)
+
+	return c, true
+
 }
 
 func (c *Clause) locked(solver *Solver) bool {
@@ -93,6 +94,7 @@ func (c *Clause) locked(solver *Solver) bool {
 func (c *Clause) Remove(s *Solver) {
 	c.detach(s, c.literals[0].Opposite())
 	c.detach(s, c.literals[1].Opposite())
+	freeClause(c)
 }
 
 func (c *Clause) detach(s *Solver, lit Literal) {
