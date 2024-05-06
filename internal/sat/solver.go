@@ -33,14 +33,6 @@ type Solver struct {
 	reason   []*Clause
 	level    []int
 
-	// Last timestamp at which a boolean variable was seen. This is effectively
-	// used as a slice of boolean by the conflict analyze algorithm. Precisely,
-	// a variable v is considered "seen" if seenAt[v] == seemTimestamp. All the
-	// variables can efficiently be marked as "not seen" in constant time by
-	// increasing the timestamp.
-	seenAt        []uint64
-	seenTimestamp uint64
-
 	// Whether the problem has reached a top level conflict.
 	unsat bool
 
@@ -57,6 +49,10 @@ type Solver struct {
 
 	// Models.
 	Models [][]bool
+
+	// Shared by operation that needs to put variables in a set and empty that
+	// set efficiently.
+	seenVar *ResetSet
 
 	// Temporary slice used in the Propagate function. The slice is re-used by
 	// all Propagate calls to avoid unnecessarily allocating new slices.
@@ -101,6 +97,7 @@ func NewSolver(ops Options) *Solver {
 		propQueue:   NewQueue[Literal](128),
 		maxConflict: -1,
 		timeout:     -1,
+		seenVar:     &ResetSet{},
 	}
 
 	if ops.MaxConflicts >= 0 {
@@ -166,7 +163,7 @@ func (s *Solver) AddVariable() int {
 	s.watchers = append(s.watchers, nil)
 	s.watchers = append(s.watchers, nil)
 	s.reason = append(s.reason, nil)
-	s.seenAt = append(s.seenAt, 0)
+	s.seenVar.Expand()
 
 	// One for each literal.
 	s.assigns = append(s.assigns, Unknown)
@@ -374,7 +371,7 @@ func (s *Solver) explain(c *Clause, l Literal) []Literal {
 }
 
 func (s *Solver) analyze(confl *Clause) ([]Literal, int) {
-	s.resetSeen()
+	s.seenVar.Clear()
 	l := Literal(-1) // unknown literal
 	counter := 0
 	backtrackLevel := 0
@@ -386,11 +383,11 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int) {
 		// Trace reason.
 		for _, q := range s.explain(confl, l) {
 			v := q.VarID()
-			if s.isSeen(v) {
+			if s.seenVar.Contains(v) {
 				continue
 			}
 
-			s.markSeen(v)
+			s.seenVar.Add(v)
 			if s.level[v] == s.decisionLevel() {
 				counter++
 				continue
@@ -408,7 +405,7 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int) {
 			v := l.VarID()
 			confl = s.reason[v]
 			s.undoOne()
-			if s.isSeen(v) {
+			if s.seenVar.Contains(v) {
 				break
 			}
 		}
@@ -424,28 +421,6 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int) {
 	copy(learnts[1:], s.tmpLearnts)
 
 	return learnts, backtrackLevel
-}
-
-// isSeen returns true if v has been marked as seen since the last time
-// resetSeen was called.
-func (s *Solver) isSeen(v int) bool {
-	return s.seenAt[v] == s.seenTimestamp
-}
-
-// markSeen marks v as seen. It will remain seen until resetSeen is called.
-func (s *Solver) markSeen(v int) {
-	s.seenAt[v] = s.seenTimestamp
-}
-
-// resetSeen marks all variables as "not seen" in amortized constant time.
-func (s *Solver) resetSeen() {
-	s.seenTimestamp++
-	if s.seenTimestamp == 0 { // overflow
-		s.seenTimestamp = 1
-		for i := range s.seenAt {
-			s.seenAt[i] = 0
-		}
-	}
 }
 
 func (s *Solver) record(clause []Literal) {
