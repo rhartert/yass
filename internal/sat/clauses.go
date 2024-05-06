@@ -9,7 +9,6 @@ type Clause struct {
 	activity float64
 
 	// The clause's literals. Must always contain at least two literals.
-	sliceRef *[]Literal
 	literals []Literal
 
 	lbd       int
@@ -60,7 +59,10 @@ func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
 	}
 
 	// Actually create the clause.
-	c := newClause(literals, learnt)
+	c := &Clause{}
+	c.learnt = learnt
+	c.literals = make([]Literal, 0, len(literals))
+	c.literals = append(c.literals, literals...)
 
 	if learnt {
 		maxLevel := -1
@@ -94,7 +96,6 @@ func (c *Clause) locked(solver *Solver) bool {
 func (c *Clause) Remove(s *Solver) {
 	c.detach(s, c.literals[0].Opposite())
 	c.detach(s, c.literals[1].Opposite())
-	freeClause(c)
 }
 
 func (c *Clause) detach(s *Solver, lit Literal) {
