@@ -191,6 +191,23 @@ func (s *Solver) AddVariable() int {
 	return index
 }
 
+// Watch registers clause c to be awaken when Literal watch is assigned to true.
+func (s *Solver) Watch(c *Clause, watch Literal) {
+	s.watchers[watch] = append(s.watchers[watch], c)
+}
+
+// Unwatch removes clause c from the list of watchers.
+func (s *Solver) Unwatch(c *Clause, watch Literal) {
+	j := 0
+	for i := 0; i < len(s.watchers[watch]); i++ {
+		if s.watchers[watch][i] != c {
+			s.watchers[watch][j] = s.watchers[watch][i]
+			j++
+		}
+	}
+	s.watchers[watch] = s.watchers[watch][:j]
+}
+
 func (s *Solver) AddClause(clause []Literal) error {
 	if s.decisionLevel() != 0 {
 		return fmt.Errorf("can only add clauses at the root level")
@@ -206,38 +223,42 @@ func (s *Solver) AddClause(clause []Literal) error {
 	return nil
 }
 
+// Simplify simplifies the clause DB as well as the problem clauses according
+// to the root-level assignments. Clauses that are satisfied at the root-level
+// are removed.
 func (s *Solver) Simplify() bool {
-	if s.Propagate() != nil {
-		return false
+	if l := s.decisionLevel(); l != 0 {
+		log.Fatalf("Simplify called on non root-level: %d", l)
 	}
-
 	if s.propQueue.Size() != 0 {
 		log.Fatal("propQueue should be empty when calling simplify")
 	}
 
-	j := 0
-	for i := 0; i < len(s.learnts); i++ {
-		if s.learnts[i].Simplify(s) {
-			s.learnts[i].Remove(s)
-		} else {
-			s.learnts[j] = s.learnts[i]
-			j++
-		}
+	if s.unsat || s.Propagate() != nil {
+		s.unsat = true
+		return false
 	}
-	s.learnts = s.learnts[:j]
 
-	j = 0
-	for i := 0; i < len(s.constraints); i++ {
-		if s.constraints[i].Simplify(s) {
-			s.constraints[i].Remove(s)
-		} else {
-			s.constraints[j] = s.constraints[i]
-			j++
-		}
-	}
-	s.constraints = s.constraints[:j]
+	s.simplifyPtr(&s.learnts)
+	s.simplifyPtr(&s.constraints) // could be turned off
 
 	return true
+}
+
+// simplifyPtr simplifies the clauses in the given slice and remove clauses that
+// are already satisfied.
+func (s *Solver) simplifyPtr(clausesPtr *[]*Clause) {
+	clauses := *clausesPtr
+	j := 0
+	for i := 0; i < len(clauses); i++ {
+		if clauses[i].Simplify(s) {
+			clauses[i].Remove(s)
+		} else {
+			clauses[j] = clauses[i]
+			j++
+		}
+	}
+	*clausesPtr = clauses[:j]
 }
 
 func (s *Solver) ReduceDB() {
@@ -341,11 +362,6 @@ func (s *Solver) DecayClaActivity() {
 
 func (s *Solver) DecayVarActivity() {
 	s.varInc *= s.varDecay
-}
-
-func (s *Solver) DecayActivities() {
-	s.DecayClaActivity()
-	s.DecayVarActivity()
 }
 
 func (s *Solver) Propagate() *Clause {
@@ -522,14 +538,13 @@ func (s *Solver) Search(nConflicts int) LBool {
 			}
 
 			learntClause, lbd, backtrackLevel := s.analyze(conflict)
-			if backtrackLevel > 0 {
-				s.cancelUntil(backtrackLevel)
-			} else {
-				s.cancelUntil(0)
-			}
+			s.cancelUntil(backtrackLevel)
 
 			s.record(learntClause, lbd)
-			s.DecayActivities()
+
+			s.DecayClaActivity()
+			s.DecayVarActivity()
+
 			continue
 		}
 

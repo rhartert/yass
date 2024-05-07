@@ -84,11 +84,10 @@ func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
 		}
 		c.literals[wl], c.literals[1] = c.literals[1], c.literals[wl]
 
-		// Bumping.
-		s.BumpClaActivity(c)
-		for _, l := range c.literals {
-			s.BumpVarActivity(l)
-		}
+		s.Watch(c, c.literals[0].Opposite())
+		s.Watch(c, c.literals[1].Opposite())
+
+		return c, true
 	}
 
 	s.watchers[c.literals[0].Opposite()] = append(s.watchers[c.literals[0].Opposite()], c)
@@ -103,19 +102,8 @@ func (c *Clause) locked(solver *Solver) bool {
 }
 
 func (c *Clause) Remove(s *Solver) {
-	c.detach(s, c.literals[0].Opposite())
-	c.detach(s, c.literals[1].Opposite())
-}
-
-func (c *Clause) detach(s *Solver, lit Literal) {
-	j := 0
-	for i := 0; i < len(s.watchers[lit]); i++ {
-		if s.watchers[lit][i] != c {
-			s.watchers[lit][j] = s.watchers[lit][i]
-			j++
-		}
-	}
-	s.watchers[lit] = s.watchers[lit][:j]
+	s.Unwatch(c, c.literals[0].Opposite())
+	s.Unwatch(c, c.literals[1].Opposite())
 }
 
 func (c *Clause) Simplify(s *Solver) bool {
