@@ -18,13 +18,14 @@ type Solver struct {
 	nextReduceIncr int64
 
 	// Variable ordering.
-	activities []float64
-	varInc     float64
-	varDecay   float64
-	order      *VarOrder
+	activities  []float64
+	varInc      float64
+	varDecay    float64
+	order       *VarOrder
+	phaseSaving bool
 
 	// Propagation and watchers.
-	watchers  [][]*Clause
+	watchers  [][]watcher
 	propQueue *Queue[Literal]
 
 	// Value assigned ot each literal.
@@ -55,7 +56,7 @@ type Solver struct {
 
 	// Temporary slice used in the Propagate function. The slice is re-used by
 	// all Propagate calls to avoid unnecessarily allocating new slices.
-	tmpWatchers []*Clause
+	tmpWatchers []watcher
 
 	// Temporary slice used in Analyze to accumulate literals before these are
 	// used to create a new learnt clause. Having one shared buffer between all
@@ -76,12 +77,24 @@ type Solver struct {
 	seenLevel *ResetSet
 }
 
+// watcher represents a clause attached to the watch list of a literal.
+type watcher struct {
+	// The watching clause to be propagated when the watched literal becomes
+	// true.
+	clause *Clause
+
+	// Guard is one of the clause's literals. If it is true, then there is
+	// no need to propagate the clause. Note that the guard literal must be
+	// different from the watcher literal.
+	guard Literal
+}
+
 type Options struct {
 	ClauseDecay   float64
 	VariableDecay float64
-
-	MaxConflicts int64
-	Timeout      time.Duration
+	MaxConflicts  int64
+	Timeout       time.Duration
+	PhaseSaving   bool
 }
 
 var DefaultOptions = Options{
@@ -89,6 +102,7 @@ var DefaultOptions = Options{
 	VariableDecay: 0.95,
 	MaxConflicts:  -1,
 	Timeout:       -1,
+	PhaseSaving:   false,
 }
 
 // NewDefaultSolver returns a solver configured with default options. This is
@@ -192,15 +206,18 @@ func (s *Solver) AddVariable() int {
 }
 
 // Watch registers clause c to be awaken when Literal watch is assigned to true.
-func (s *Solver) Watch(c *Clause, watch Literal) {
-	s.watchers[watch] = append(s.watchers[watch], c)
+func (s *Solver) Watch(c *Clause, watch Literal, guard Literal) {
+	s.watchers[watch] = append(s.watchers[watch], watcher{
+		clause: c,
+		guard:  guard,
+	})
 }
 
 // Unwatch removes clause c from the list of watchers.
 func (s *Solver) Unwatch(c *Clause, watch Literal) {
 	j := 0
 	for i := 0; i < len(s.watchers[watch]); i++ {
-		if s.watchers[watch][i] != c {
+		if s.watchers[watch][i].clause != c {
 			s.watchers[watch][j] = s.watchers[watch][i]
 			j++
 		}
@@ -314,6 +331,7 @@ func (s *Solver) Solve() LBool {
 	numConflicts := 100
 	status := Unknown
 	s.order = NewVarOrder(s, s.NumVariables())
+	s.order.phaseSaving = s.phaseSaving
 	s.startTime = time.Now()
 
 	s.printSeparator()
@@ -377,9 +395,19 @@ func (s *Solver) Propagate() *Clause {
 		s.tmpWatchers = append(s.tmpWatchers, s.watchers[l]...)
 		s.watchers[l] = s.watchers[l][:0]
 
-		// Detach the constraint from the literal.
-		for i, c := range s.tmpWatchers {
-			if c.Propagate(s, l) {
+		for i, w := range s.tmpWatchers {
+			// No need to propagate the clause if its guard is true. This block
+			// is not necessary for propagation to behave properly. However, it
+			// helps to significantly speed-up computation by avoiding loading
+			// clause (in memory) that do not need to be propagated. Note that
+			// this alters the order in which clause are propagated and can thus
+			// yield to different conflict analysis and learnt clauses.
+			if s.LitValue(w.guard) == True {
+				s.watchers[l] = append(s.watchers[l], w)
+				continue
+			}
+
+			if w.clause.Propagate(s, l) {
 				continue
 			}
 
@@ -387,7 +415,7 @@ func (s *Solver) Propagate() *Clause {
 			// and return the constraint.
 			s.watchers[l] = append(s.watchers[l], s.tmpWatchers[i+1:]...)
 			s.propQueue.Clear()
-			return s.tmpWatchers[i]
+			return s.tmpWatchers[i].clause
 		}
 	}
 

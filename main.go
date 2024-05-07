@@ -36,6 +36,12 @@ var flagTimeout = flag.Duration(
 	"search timeout (-1 = no timeout)",
 )
 
+var flagPhaseSaving = flag.Bool(
+	"phase",
+	false,
+	"enable phase saving in search strategy",
+)
+
 func parseConfig() (*config, error) {
 	flag.Parse()
 
@@ -48,6 +54,7 @@ func parseConfig() (*config, error) {
 		cpuProfile:   *flagCPUProfile,
 		maxConflicts: *flagMaxConflict,
 		timeout:      *flagTimeout,
+		phaseSaving:  *flagPhaseSaving,
 	}, nil
 }
 
@@ -57,10 +64,12 @@ type config struct {
 	cpuProfile   bool
 	maxConflicts int64
 	timeout      time.Duration
+	phaseSaving  bool
 }
 
 func solverOptions(cfg *config) sat.Options {
 	options := sat.DefaultOptions
+	options.PhaseSaving = cfg.phaseSaving
 	if cfg.maxConflicts >= 0 {
 		options.MaxConflicts = cfg.maxConflicts
 	}
