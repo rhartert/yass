@@ -84,14 +84,15 @@ func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
 		}
 		c.literals[wl], c.literals[1] = c.literals[1], c.literals[wl]
 
-		s.Watch(c, c.literals[0].Opposite())
-		s.Watch(c, c.literals[1].Opposite())
-
-		return c, true
+		// Bumping.
+		s.BumpClaActivity(c)
+		for _, l := range c.literals {
+			s.BumpVarActivity(l)
+		}
 	}
 
-	s.watchers[c.literals[0].Opposite()] = append(s.watchers[c.literals[0].Opposite()], c)
-	s.watchers[c.literals[1].Opposite()] = append(s.watchers[c.literals[1].Opposite()], c)
+	s.Watch(c, c.literals[0].Opposite())
+	s.Watch(c, c.literals[1].Opposite())
 
 	return c, true
 
