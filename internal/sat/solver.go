@@ -317,11 +317,6 @@ func (s *Solver) DecayVarActivity() {
 	s.varInc *= s.varDecay
 }
 
-func (s *Solver) DecayActivities() {
-	s.DecayClaActivity()
-	s.DecayVarActivity()
-}
-
 func (s *Solver) Propagate() *Clause {
 	for s.propQueue.Size() > 0 {
 		l := s.propQueue.Pop()
@@ -459,14 +454,13 @@ func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
 			}
 
 			learntClause, backtrackLevel := s.analyze(conflict)
-			if backtrackLevel > 0 {
-				s.cancelUntil(backtrackLevel)
-			} else {
-				s.cancelUntil(0)
-			}
+			s.cancelUntil(backtrackLevel)
 
 			s.record(learntClause)
-			s.DecayActivities()
+
+			s.DecayClaActivity()
+			s.DecayVarActivity()
+
 			continue
 		}
 
