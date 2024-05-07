@@ -338,9 +338,11 @@ func (s *Solver) Solve() LBool {
 
 func (s *Solver) BumpClaActivity(c *Clause) {
 	c.activity += s.clauseInc
+
 	if c.activity > 1e100 {
+		s.clauseInc *= 1e-100 // important to keep proportions
 		for _, l := range s.learnts {
-			l.activity = l.activity / 1e100
+			l.activity *= 1e-100
 		}
 	}
 }
@@ -348,11 +350,14 @@ func (s *Solver) BumpClaActivity(c *Clause) {
 func (s *Solver) BumpVarActivity(l Literal) {
 	vid := l.VarID()
 	s.activities[vid] += s.varInc
+
 	if s.activities[vid] > 1e100 {
-		for i, a := range s.activities {
-			s.activities[i] = a / 1e100
+		s.varInc *= 1e-100 // important to keep proportions
+		for i := range s.activities {
+			s.activities[i] *= 1e-100
 		}
 	}
+
 	s.order.Update(vid)
 }
 

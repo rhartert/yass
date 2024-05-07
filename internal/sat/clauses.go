@@ -24,8 +24,8 @@ type Clause struct {
 	isProtected bool
 }
 
-func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
-	size := len(literals)
+func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
+	size := len(tmpLiterals)
 
 	if !learnt {
 		seen := map[Literal]struct{}{}
@@ -33,28 +33,28 @@ func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
 		for i := size - 1; i >= 0; i-- {
 			// If the opposite literal is in the clause, then the clause is
 			// always true.
-			if _, ok := seen[literals[i].Opposite()]; ok {
+			if _, ok := seen[tmpLiterals[i].Opposite()]; ok {
 				return nil, true
 			}
 
 			// Remove the literal if it is already present.
-			if _, ok := seen[literals[i]]; ok {
+			if _, ok := seen[tmpLiterals[i]]; ok {
 				size--
-				literals[i], literals[size] = literals[size], literals[i]
+				tmpLiterals[i], tmpLiterals[size] = tmpLiterals[size], tmpLiterals[i]
 			}
 
-			seen[literals[i]] = struct{}{}
+			seen[tmpLiterals[i]] = struct{}{}
 
-			switch s.LitValue(literals[i]) {
+			switch s.LitValue(tmpLiterals[i]) {
 			case True:
 				return nil, true // clause is always true
 			case False:
 				size--
-				literals[i], literals[size] = literals[size], literals[i]
+				tmpLiterals[i], tmpLiterals[size] = tmpLiterals[size], tmpLiterals[i]
 			}
 		}
 
-		literals = literals[:size]
+		tmpLiterals = tmpLiterals[:size]
 	}
 
 	if size == 0 {
@@ -64,14 +64,14 @@ func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
 
 	if size == 1 {
 		// Directly enqueue unit facts.
-		return nil, s.enqueue(literals[0], nil)
+		return nil, s.enqueue(tmpLiterals[0], nil)
 	}
 
 	// Actually create the clause.
 	c := &Clause{}
 	c.learnt = learnt
-	c.literals = make([]Literal, 0, len(literals))
-	c.literals = append(c.literals, literals...)
+	c.literals = make([]Literal, 0, len(tmpLiterals))
+	c.literals = append(c.literals, tmpLiterals...)
 
 	if learnt {
 		maxLevel := -1
@@ -135,7 +135,7 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 
 	// If c.literals[0] is True, then the clause is already true.
 	if s.LitValue(c.literals[0]) == True {
-		s.watchers[l] = append(s.watchers[l], c)
+		s.Watch(c, l)
 		return true
 	}
 
@@ -145,13 +145,13 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 		if s.LitValue(c.literals[i]) != False {
 			c.literals[1] = c.literals[i]
 			c.literals[i] = l.Opposite()
-			s.watchers[c.literals[1].Opposite()] = append(s.watchers[c.literals[1].Opposite()], c)
+			s.Watch(c, c.literals[1].Opposite())
 			return true
 		}
 	}
 
 	// The first literal must be true if all other literals are false.
-	s.watchers[l] = append(s.watchers[l], c)
+	s.Watch(c, l)
 	return s.enqueue(c.literals[0], c)
 }
 
