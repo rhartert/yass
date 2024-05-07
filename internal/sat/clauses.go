@@ -120,7 +120,7 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 
 	// If c.literals[0] is True, then the clause is already true.
 	if s.LitValue(c.literals[0]) == True {
-		s.watchers[l] = append(s.watchers[l], c)
+		s.Watch(c, l)
 		return true
 	}
 
@@ -130,13 +130,13 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 		if s.LitValue(c.literals[i]) != False {
 			c.literals[1] = c.literals[i]
 			c.literals[i] = l.Opposite()
-			s.watchers[c.literals[1].Opposite()] = append(s.watchers[c.literals[1].Opposite()], c)
+			s.Watch(c, c.literals[1].Opposite())
 			return true
 		}
 	}
 
 	// The first literal must be true if all other literals are false.
-	s.watchers[l] = append(s.watchers[l], c)
+	s.Watch(c, l)
 	return s.enqueue(c.literals[0], c)
 }
 
