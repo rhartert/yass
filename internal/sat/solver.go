@@ -190,38 +190,42 @@ func (s *Solver) AddClause(clause []Literal) error {
 	return nil
 }
 
+// Simplify simplifies the clause DB as well as the problem clauses according
+// to the root-level assignments. Clauses that are satisfied at the root-level
+// are removed.
 func (s *Solver) Simplify() bool {
-	if s.Propagate() != nil {
-		return false
+	if l := s.decisionLevel(); l != 0 {
+		log.Fatalf("Simplify called on non root-level: %d", l)
 	}
-
 	if s.propQueue.Size() != 0 {
 		log.Fatal("propQueue should be empty when calling simplify")
 	}
 
-	j := 0
-	for i := 0; i < len(s.learnts); i++ {
-		if s.learnts[i].Simplify(s) {
-			s.learnts[i].Remove(s)
-		} else {
-			s.learnts[j] = s.learnts[i]
-			j++
-		}
+	if s.unsat || s.Propagate() != nil {
+		s.unsat = true
+		return false
 	}
-	s.learnts = s.learnts[:j]
 
-	j = 0
-	for i := 0; i < len(s.constraints); i++ {
-		if s.constraints[i].Simplify(s) {
-			s.constraints[i].Remove(s)
-		} else {
-			s.constraints[j] = s.constraints[i]
-			j++
-		}
-	}
-	s.constraints = s.constraints[:j]
+	s.simplifyPtr(&s.learnts)
+	s.simplifyPtr(&s.constraints) // could be turned off
 
 	return true
+}
+
+// simplifyPtr simplifies the clauses in the given slice and remove clauses that
+// are already satisfied.
+func (s *Solver) simplifyPtr(clausesPtr *[]*Clause) {
+	clauses := *clausesPtr
+	j := 0
+	for i := 0; i < len(clauses); i++ {
+		if clauses[i].Simplify(s) {
+			clauses[i].Remove(s)
+		} else {
+			clauses[j] = clauses[i]
+			j++
+		}
+	}
+	*clausesPtr = clauses[:j]
 }
 
 func (s *Solver) ReduceDB() {
