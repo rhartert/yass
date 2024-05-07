@@ -126,6 +126,7 @@ func NewSolver(ops Options) *Solver {
 		seenVar:        &ResetSet{},
 		tmpLearnts:     make([]Literal, 0, 32),
 		tmpReason:      make([]Literal, 0, 32),
+		phaseSaving:    ops.PhaseSaving,
 	}
 
 	if ops.MaxConflicts >= 0 {
