@@ -422,13 +422,14 @@ func (s *Solver) explain(c *Clause, l Literal) []Literal {
 }
 
 func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
-	// Current number of "implication" nodes in exploration of the decision
-	// level. A value of 0 indicates that the exploration has reached a single
-	// implication point.
+	// Current number of "implication" nodes encountered in the exploration of
+	// the decision level. A value of 0 indicates that the exploration has
+	// reached a single implication point.
 	nImplicationPoints := 0
 
 	// Empty the buffer of literals in which the learnt clause will be stored.
-	// Note position of the first literal is reserved for the FUIP.
+	// Note that the first literal is reserved for the FUIP which is set at the
+	// end of this function.
 	s.tmpLearnts = s.tmpLearnts[:0]
 	s.tmpLearnts = append(s.tmpLearnts, -1)
 

@@ -57,45 +57,43 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 		tmpLiterals = tmpLiterals[:size]
 	}
 
-	if size == 0 {
+	switch size {
+	case 0:
 		// Empty clauses cannot be valid.
 		return nil, false
-	}
-
-	if size == 1 {
+	case 1:
 		// Directly enqueue unit facts.
 		return nil, s.enqueue(tmpLiterals[0], nil)
-	}
+	default:
+		// Actually create the clause.
+		c := &Clause{}
+		c.learnt = learnt
+		c.literals = make([]Literal, 0, len(tmpLiterals))
+		c.literals = append(c.literals, tmpLiterals...)
 
-	// Actually create the clause.
-	c := &Clause{}
-	c.learnt = learnt
-	c.literals = make([]Literal, 0, len(tmpLiterals))
-	c.literals = append(c.literals, tmpLiterals...)
+		if learnt {
+			maxLevel := -1
+			wl := -1
+			for i := 1; i < len(c.literals); i++ {
+				if level := s.level[c.literals[i].VarID()]; level > maxLevel {
+					maxLevel = level
+					wl = i
+				}
+			}
+			c.literals[wl], c.literals[1] = c.literals[1], c.literals[wl]
 
-	if learnt {
-		maxLevel := -1
-		wl := -1
-		for i := 1; i < len(c.literals); i++ {
-			if level := s.level[c.literals[i].VarID()]; level > maxLevel {
-				maxLevel = level
-				wl = i
+			// Bumping.
+			s.BumpClaActivity(c)
+			for _, l := range c.literals {
+				s.BumpVarActivity(l)
 			}
 		}
-		c.literals[wl], c.literals[1] = c.literals[1], c.literals[wl]
 
-		// Bumping.
-		s.BumpClaActivity(c)
-		for _, l := range c.literals {
-			s.BumpVarActivity(l)
-		}
+		s.Watch(c, c.literals[0].Opposite())
+		s.Watch(c, c.literals[1].Opposite())
+
+		return c, true
 	}
-
-	s.Watch(c, c.literals[0].Opposite())
-	s.Watch(c, c.literals[1].Opposite())
-
-	return c, true
-
 }
 
 func (c *Clause) locked(solver *Solver) bool {
