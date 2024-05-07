@@ -67,12 +67,15 @@ type Solver struct {
 	tmpReason []Literal
 }
 
+// watcher represents a clause attached to the watch list of a literal.
 type watcher struct {
-	// The watching clause to be propagated if the guard is not true.
+	// The watching clause to be propagated when the watched literal becomes
+	// true.
 	clause *Clause
 
-	// Guard is one of the clause literals. If it is true, then there is no need
-	// to propagate the clause.
+	// Guard is one of the clause's literals. If it is true, then there is
+	// no need to propagate the clause. Note that the guard literal must be
+	// different from the watcher literal.
 	guard Literal
 }
 
