@@ -15,10 +15,11 @@ type Solver struct {
 	clauseDecay float64
 
 	// Variable ordering.
-	activities []float64
-	varInc     float64
-	varDecay   float64
-	order      *VarOrder
+	activities  []float64
+	varInc      float64
+	varDecay    float64
+	order       *VarOrder
+	phaseSaving bool
 
 	// Propagation and watchers.
 	watchers  [][]watcher
@@ -82,9 +83,9 @@ type watcher struct {
 type Options struct {
 	ClauseDecay   float64
 	VariableDecay float64
-
-	MaxConflicts int64
-	Timeout      time.Duration
+	MaxConflicts  int64
+	Timeout       time.Duration
+	PhaseSaving   bool
 }
 
 var DefaultOptions = Options{
@@ -92,6 +93,7 @@ var DefaultOptions = Options{
 	VariableDecay: 0.95,
 	MaxConflicts:  -1,
 	Timeout:       -1,
+	PhaseSaving:   false,
 }
 
 // NewDefaultSolver returns a solver configured with default options. This is
@@ -110,6 +112,7 @@ func NewSolver(ops Options) *Solver {
 		maxConflict: -1,
 		timeout:     -1,
 		seenVar:     &ResetSet{},
+		phaseSaving: ops.PhaseSaving,
 	}
 
 	if ops.MaxConflicts >= 0 {
@@ -298,6 +301,7 @@ func (s *Solver) Solve() LBool {
 	numLearnts := s.NumConstraints() / 3
 	status := Unknown
 	s.order = NewVarOrder(s, s.NumVariables())
+	s.order.phaseSaving = s.phaseSaving
 	s.startTime = time.Now()
 
 	s.printSeparator()
