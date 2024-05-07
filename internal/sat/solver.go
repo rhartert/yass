@@ -392,16 +392,26 @@ func (s *Solver) explain(c *Clause, l Literal) []Literal {
 }
 
 func (s *Solver) analyze(confl *Clause) ([]Literal, int) {
+	// Current number of "implication" nodes encountered in the exploration of
+	// the decision level. A value of 0 indicates that the exploration has
+	// reached a single implication point.
+	nImplicationPoints := 0
+
+	// Empty the buffer of literals in which the learnt clause will be stored.
+	// Note that the first literal is reserved for the FUIP which is set at the
+	// of this function.
+	s.tmpLearnts = s.tmpLearnts[:0]
+	s.tmpLearnts = append(s.tmpLearnts, -1)
+
+	// Next literal to look at. This is used to iterate over the trail without
+	// actually undoing the literal assignments.
+	nextLiteral := len(s.trail) - 1
+
+	l := Literal(-1) // unknown literal used to represent the conflict
 	s.seenVar.Clear()
-	l := Literal(-1) // unknown literal
-	counter := 0
 	backtrackLevel := 0
 
-	// Note that the first element is already reserved.
-	s.tmpLearnts = s.tmpLearnts[:0]
-
 	for {
-		// Trace reason.
 		for _, q := range s.explain(confl, l) {
 			v := q.VarID()
 			if s.seenVar.Contains(v) {
@@ -410,7 +420,7 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int) {
 
 			s.seenVar.Add(v)
 			if s.level[v] == s.decisionLevel() {
-				counter++
+				nImplicationPoints++
 				continue
 			}
 
@@ -422,26 +432,25 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int) {
 
 		// Select next literal to look at.
 		for {
-			l = s.trail[len(s.trail)-1]
+			l = s.trail[nextLiteral]
+			nextLiteral--
 			v := l.VarID()
 			confl = s.reason[v]
-			s.undoOne()
 			if s.seenVar.Contains(v) {
 				break
 			}
 		}
 
-		counter--
-		if counter <= 0 {
+		nImplicationPoints--
+		if nImplicationPoints <= 0 {
 			break
 		}
 	}
 
-	learnts := make([]Literal, len(s.tmpLearnts)+1)
-	learnts[0] = l.Opposite()
-	copy(learnts[1:], s.tmpLearnts)
+	// Add literal corresponding to the FUIP.
+	s.tmpLearnts[0] = l.Opposite()
 
-	return learnts, backtrackLevel
+	return s.tmpLearnts, backtrackLevel
 }
 
 func (s *Solver) record(clause []Literal) {

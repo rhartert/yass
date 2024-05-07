@@ -12,50 +12,53 @@ type Clause struct {
 	literals []Literal
 }
 
-func NewClause(s *Solver, literals []Literal, learnt bool) (*Clause, bool) {
-
+func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 	if !learnt {
-		size := len(literals)
+		size := len(tmpLiterals)
 		seen := map[Literal]struct{}{}
 
 		for i := size - 1; i >= 0; i-- {
 			// If the opposite literal is in the clause, then the clause is
 			// always true.
-			if _, ok := seen[literals[i].Opposite()]; ok {
+			if _, ok := seen[tmpLiterals[i].Opposite()]; ok {
 				return nil, true
 			}
 
 			// Remove the literal if it is already present.
-			if _, ok := seen[literals[i]]; ok {
+			if _, ok := seen[tmpLiterals[i]]; ok {
 				size--
-				literals[i], literals[size] = literals[size], literals[i]
+				tmpLiterals[i], tmpLiterals[size] = tmpLiterals[size], tmpLiterals[i]
 			}
 
-			seen[literals[i]] = struct{}{}
+			seen[tmpLiterals[i]] = struct{}{}
 
-			switch s.LitValue(literals[i]) {
+			switch s.LitValue(tmpLiterals[i]) {
 			case True:
 				return nil, true // clause is always true
 			case False:
 				size--
-				literals[i], literals[size] = literals[size], literals[i]
+				tmpLiterals[i], tmpLiterals[size] = tmpLiterals[size], tmpLiterals[i]
 			}
 		}
 
-		literals = literals[:size]
+		tmpLiterals = tmpLiterals[:size]
 	}
 
-	switch len(literals) {
+	switch len(tmpLiterals) {
 	case 0:
 		// Empty clauses cannot be valid.
 		return nil, false
 	case 1:
 		// Directly enqueue unit facts.
-		return nil, s.enqueue(literals[0], nil)
+		return nil, s.enqueue(tmpLiterals[0], nil)
 	default:
 		// Actually create the clause.
 		c := &Clause{}
-		c.literals = literals
+
+		// Copy literals from the tmpSlice.
+		c.literals = make([]Literal, 0, len(tmpLiterals))
+		c.literals = append(c.literals, tmpLiterals...)
+
 		c.learnt = learnt
 
 		if learnt {
