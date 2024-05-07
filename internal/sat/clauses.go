@@ -79,8 +79,8 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 			}
 		}
 
-		s.Watch(c, c.literals[0].Opposite())
-		s.Watch(c, c.literals[1].Opposite())
+		s.Watch(c, c.literals[0].Opposite(), c.literals[1])
+		s.Watch(c, c.literals[1].Opposite(), c.literals[0])
 
 		return c, true
 	}
@@ -114,7 +114,9 @@ func (c *Clause) Simplify(s *Solver) bool {
 }
 
 func (c *Clause) Propagate(s *Solver, l Literal) bool {
-	// Make sure the false literal is c.literals[1].
+	// Make sure that the triggering literal is c.literals[1]. This simplifies
+	// the rest of this function as c.literals[0] is always the literal to be
+	// potentially enqueued (if all other literals are false).
 	opp := l.Opposite()
 	if c.literals[0] == opp {
 		c.literals[0] = c.literals[1]
@@ -123,7 +125,7 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 
 	// If c.literals[0] is True, then the clause is already true.
 	if s.LitValue(c.literals[0]) == True {
-		s.Watch(c, l)
+		s.Watch(c, l, c.literals[0])
 		return true
 	}
 
@@ -133,13 +135,13 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 		if s.LitValue(c.literals[i]) != False {
 			c.literals[1] = c.literals[i]
 			c.literals[i] = l.Opposite()
-			s.Watch(c, c.literals[1].Opposite())
+			s.Watch(c, c.literals[1].Opposite(), c.literals[0])
 			return true
 		}
 	}
 
 	// The first literal must be true if all other literals are false.
-	s.Watch(c, l)
+	s.Watch(c, l, c.literals[0])
 	return s.enqueue(c.literals[0], c)
 }
 
