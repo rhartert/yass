@@ -175,6 +175,23 @@ func (s *Solver) AddVariable() int {
 	return index
 }
 
+// Watch registers clause c to be awaken when Literal watch is assigned to true.
+func (s *Solver) Watch(c *Clause, watch Literal) {
+	s.watchers[watch] = append(s.watchers[watch], c)
+}
+
+// Unwatch removes clause c from the list of watchers.
+func (s *Solver) Unwatch(c *Clause, watch Literal) {
+	j := 0
+	for i := 0; i < len(s.watchers[watch]); i++ {
+		if s.watchers[watch][i] != c {
+			s.watchers[watch][j] = s.watchers[watch][i]
+			j++
+		}
+	}
+	s.watchers[watch] = s.watchers[watch][:j]
+}
+
 func (s *Solver) AddClause(clause []Literal) error {
 	if s.decisionLevel() != 0 {
 		return fmt.Errorf("can only add clauses at the root level")
