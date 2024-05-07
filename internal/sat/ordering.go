@@ -7,16 +7,20 @@ import (
 )
 
 type VarOrder struct {
-	size   int
-	heap   *yagh.IntMap[float64]
-	solver *Solver
+	size        int
+	solver      *Solver
+	phase       []LBool
+	phaseSaving bool
+	heap        *yagh.IntMap[float64]
 }
 
 func NewVarOrder(s *Solver, nVar int) *VarOrder {
 	vo := &VarOrder{
-		size:   nVar,
-		solver: s,
-		heap:   yagh.New[float64](nVar),
+		size:        nVar,
+		solver:      s,
+		phase:       make([]LBool, nVar),
+		phaseSaving: false,
+		heap:        yagh.New[float64](nVar),
 	}
 
 	vo.UpdateAll()
@@ -38,6 +42,10 @@ func (vo *VarOrder) UpdateAll() {
 }
 
 func (vo *VarOrder) Undo(varID int) {
+	if vo.phaseSaving {
+		vo.phase[varID] = vo.solver.VarValue(varID)
+	}
+
 	act := vo.solver.activities[varID]
 	vo.heap.Put(varID, -act)
 }
@@ -52,6 +60,13 @@ func (vo *VarOrder) Select() Literal {
 			continue // already assigned
 		}
 
-		return vo.solver.NegativeLiteral(next.Elem)
+		switch vo.phase[next.Elem] {
+		case True:
+			return vo.solver.PositiveLiteral(next.Elem)
+		case False:
+			return vo.solver.NegativeLiteral(next.Elem)
+		default:
+			return vo.solver.NegativeLiteral(next.Elem)
+		}
 	}
 }

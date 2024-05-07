@@ -512,12 +512,14 @@ func (s *Solver) Search(nConflicts int, nLearnts int) LBool {
 
 func (s *Solver) undoOne() {
 	l := s.trail[len(s.trail)-1]
+	v := l.VarID()
+
+	s.order.Undo(v)
 	s.assigns[l] = Unknown
 	s.assigns[l.Opposite()] = Unknown
-	v := l.VarID()
 	s.reason[v] = nil
 	s.level[v] = -1
-	s.order.Undo(v)
+
 	s.trail = s.trail[:len(s.trail)-1]
 }
 
