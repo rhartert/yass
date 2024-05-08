@@ -5,16 +5,29 @@ import (
 )
 
 type Clause struct {
-	learnt   bool
 	activity float64
 
 	// The clause's literals. Must always contain at least two literals.
 	literals []Literal
+
+	// Learnt clause properties
+	// ------------------------
+
+	// Whether the clause was learnt or not.
+	learnt bool
+
+	// The literal block distance used to estimate the quality of the clause.
+	lbd int
+
+	// If true, the clause will not be deleted in the next clause DB clean up.
+	// This is only relevant to learnt clauses.
+	isProtected bool
 }
 
 func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
+	size := len(tmpLiterals)
+
 	if !learnt {
-		size := len(tmpLiterals)
 		seen := map[Literal]struct{}{}
 
 		for i := size - 1; i >= 0; i-- {
@@ -44,7 +57,7 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 		tmpLiterals = tmpLiterals[:size]
 	}
 
-	switch len(tmpLiterals) {
+	switch size {
 	case 0:
 		// Empty clauses cannot be valid.
 		return nil, false
@@ -54,12 +67,9 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 	default:
 		// Actually create the clause.
 		c := &Clause{}
-
-		// Copy literals from the tmpSlice.
+		c.learnt = learnt
 		c.literals = make([]Literal, 0, len(tmpLiterals))
 		c.literals = append(c.literals, tmpLiterals...)
-
-		c.learnt = learnt
 
 		if learnt {
 			maxLevel := -1
