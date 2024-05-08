@@ -18,10 +18,7 @@ type Solver struct {
 	nextReduceIncr int64
 
 	// Variable ordering.
-	activities []float64
-	varInc     float64
-	varDecay   float64
-	order      *VarOrder
+	order *VarOrder
 
 	// Propagation and watchers.
 	watchers  [][]watcher
@@ -113,9 +110,8 @@ func NewDefaultSolver() *Solver {
 func NewSolver(ops Options) *Solver {
 	s := &Solver{
 		clauseDecay:    ops.ClauseDecay,
-		varDecay:       ops.VariableDecay,
-		clauseInc:      0.1,
-		varInc:         0.1,
+		clauseInc:      1,
+		order:          NewVarOrder(ops.VariableDecay, ops.PhaseSaving),
 		propQueue:      NewQueue[Literal](128),
 		maxConflict:    -1,
 		timeout:        -1,
@@ -126,9 +122,6 @@ func NewSolver(ops Options) *Solver {
 		tmpLearnts:     make([]Literal, 0, 32),
 		tmpReason:      make([]Literal, 0, 32),
 	}
-
-	s.order = NewVarOrder(s)
-	s.order.phaseSaving = ops.PhaseSaving
 
 	if ops.MaxConflicts >= 0 {
 		s.hasStopCond = true
@@ -194,8 +187,7 @@ func (s *Solver) AddVariable() int {
 	s.assigns = append(s.assigns, Unknown)
 
 	s.level = append(s.level, -1)
-	s.activities = append(s.activities, 0)
-	s.order.AddVar()
+	s.order.AddVar(0.0, Unknown)
 	return index
 }
 
@@ -357,26 +349,8 @@ func (s *Solver) BumpClaActivity(c *Clause) {
 	}
 }
 
-func (s *Solver) BumpVarActivity(l Literal) {
-	vid := l.VarID()
-	s.activities[vid] += s.varInc
-
-	if s.activities[vid] > 1e100 {
-		s.varInc *= 1e-100 // important to keep proportions
-		for i := range s.activities {
-			s.activities[i] *= 1e-100
-		}
-	}
-
-	s.order.Update(vid)
-}
-
 func (s *Solver) DecayClaActivity() {
 	s.clauseInc /= s.clauseDecay // decay activities by bumping increment
-}
-
-func (s *Solver) DecayVarActivity() {
-	s.varInc /= s.varDecay // decay activities by bumping increment
 }
 
 func (s *Solver) Propagate() *Clause {
@@ -534,7 +508,13 @@ func (s *Solver) computeLBD(literals []Literal) int {
 func (s *Solver) record(clause []Literal, lbd int) {
 	c, _ := NewClause(s, clause, true)
 	s.enqueue(clause[0], c)
+
 	if c != nil {
+		s.BumpClaActivity(c)
+		for _, l := range c.literals {
+			s.order.BumpScore(l.VarID())
+		}
+
 		s.learnts = append(s.learnts, c)
 		c.lbd = lbd
 	}
@@ -569,7 +549,7 @@ func (s *Solver) Search(nConflicts int) LBool {
 			s.record(learntClause, lbd)
 
 			s.DecayClaActivity()
-			s.DecayVarActivity()
+			s.order.DecayScores()
 
 			continue
 		}
@@ -597,7 +577,7 @@ func (s *Solver) Search(nConflicts int) LBool {
 			return Unknown
 		}
 
-		l := s.order.Select()
+		l := s.order.NextDecision(s)
 		s.assume(l)
 	}
 
@@ -618,7 +598,7 @@ func (s *Solver) unnassignedLast() {
 	l := s.trail[len(s.trail)-1]
 	v := l.VarID()
 
-	s.order.Undo(v)
+	s.order.Reinsert(v, s.VarValue(v))
 	s.assigns[l] = Unknown
 	s.assigns[l.Opposite()] = Unknown
 	s.reason[v] = nil
