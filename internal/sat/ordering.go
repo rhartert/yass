@@ -63,11 +63,11 @@ func (vo *VarOrder) Select() Literal {
 
 		switch vo.phase[next.Elem] {
 		case True:
-			return vo.solver.PositiveLiteral(next.Elem)
+			return PositiveLiteral(next.Elem)
 		case False:
-			return vo.solver.NegativeLiteral(next.Elem)
+			return NegativeLiteral(next.Elem)
 		default:
-			return vo.solver.NegativeLiteral(next.Elem)
+			return NegativeLiteral(next.Elem)
 		}
 	}
 }

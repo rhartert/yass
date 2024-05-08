@@ -156,14 +156,6 @@ func (s *Solver) shouldStop() bool {
 	return false
 }
 
-func (s *Solver) PositiveLiteral(varID int) Literal {
-	return Literal(varID * 2)
-}
-
-func (s *Solver) NegativeLiteral(varID int) Literal {
-	return s.PositiveLiteral(varID).Opposite()
-}
-
 func (s *Solver) NumVariables() int {
 	return len(s.assigns) / 2
 }
@@ -181,7 +173,7 @@ func (s *Solver) NumLearnts() int {
 }
 
 func (s *Solver) VarValue(x int) LBool {
-	return s.assigns[s.PositiveLiteral(x)]
+	return s.assigns[PositiveLiteral(x)]
 }
 
 func (s *Solver) LitValue(l Literal) LBool {

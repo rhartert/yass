@@ -100,9 +100,9 @@ func solveAll(instance *dimacs.Instance) [][]bool {
 		modelClause := make([]sat.Literal, s.NumVariables())
 		for i, b := range s.Models[len(s.Models)-1] {
 			if b { // literals are flipped
-				modelClause[i] = s.NegativeLiteral(i)
+				modelClause[i] = sat.NegativeLiteral(i)
 			} else {
-				modelClause[i] = s.PositiveLiteral(i)
+				modelClause[i] = sat.PositiveLiteral(i)
 			}
 		}
 		s.AddClause(modelClause)

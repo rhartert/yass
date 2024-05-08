@@ -62,9 +62,9 @@ func Instantiate(s *sat.Solver, instance *Instance) error {
 		clause := []sat.Literal{}
 		for _, v := range c {
 			if v < 0 {
-				clause = append(clause, s.NegativeLiteral(-v-1))
+				clause = append(clause, sat.NegativeLiteral(-v-1))
 			} else {
-				clause = append(clause, s.PositiveLiteral(v-1))
+				clause = append(clause, sat.PositiveLiteral(v-1))
 			}
 		}
 		s.AddClause(clause)

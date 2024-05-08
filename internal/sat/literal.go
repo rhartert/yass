@@ -6,6 +6,14 @@ import "fmt"
 // its negation.
 type Literal int
 
+func PositiveLiteral(v int) Literal {
+	return Literal(v * 2)
+}
+
+func NegativeLiteral(v int) Literal {
+	return Literal(v*2 + 1)
+}
+
 // VarID returns the ID of the literal's variable.
 func (l Literal) VarID() int {
 	return int(l) / 2
