@@ -14,20 +14,21 @@ type VarOrder struct {
 	heap        *yagh.IntMap[float64]
 }
 
-func NewVarOrder(s *Solver, nVar int) *VarOrder {
+func NewVarOrder(s *Solver) *VarOrder {
 	vo := &VarOrder{
-		size:        nVar,
-		solver:      s,
-		phase:       make([]LBool, nVar),
-		phaseSaving: false,
-		heap:        yagh.New[float64](nVar),
+		solver: s,
+		heap:   yagh.New[float64](0),
+		phase:  make([]LBool, 0),
 	}
-
-	vo.UpdateAll()
 	return vo
 }
 
-func (vo *VarOrder) NewVar() {}
+func (vo *VarOrder) AddVar() {
+	vo.phase = append(vo.phase, Unknown)
+	vo.heap.GrowBy(1)
+	vo.Undo(vo.size)
+	vo.size++
+}
 
 func (vo *VarOrder) Update(varID int) {
 	if vo.heap.Contains(varID) {
