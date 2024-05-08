@@ -350,7 +350,7 @@ func (s *Solver) Solve() LBool {
 	s.printSearchStats()
 	s.printSeparator()
 
-	s.cancelUntil(0)
+	s.backtrackTo(0)
 	return status
 }
 
@@ -572,7 +572,7 @@ func (s *Solver) Search(nConflicts int) LBool {
 			}
 
 			learntClause, lbd, backtrackLevel := s.analyze(conflict)
-			s.cancelUntil(backtrackLevel)
+			s.backtrackTo(backtrackLevel)
 
 			s.record(learntClause, lbd)
 
@@ -596,12 +596,12 @@ func (s *Solver) Search(nConflicts int) LBool {
 
 		if s.NumAssigns() == s.NumVariables() { // solution found
 			s.saveModel()
-			s.cancelUntil(0)
+			s.backtrackTo(0)
 			return True
 		}
 
 		if conflictCount > nConflicts {
-			s.cancelUntil(0)
+			s.backtrackTo(0)
 			return Unknown
 		}
 
@@ -612,7 +612,17 @@ func (s *Solver) Search(nConflicts int) LBool {
 	return Unknown
 }
 
-func (s *Solver) undoOne() {
+func (s *Solver) backtrackTo(level int) {
+	for s.decisionLevel() > level {
+		c := len(s.trail) - s.trailLim[len(s.trailLim)-1]
+		for ; c != 0; c-- {
+			s.unnassignedLast()
+		}
+		s.trailLim = s.trailLim[:len(s.trailLim)-1]
+	}
+}
+
+func (s *Solver) unnassignedLast() {
 	l := s.trail[len(s.trail)-1]
 	v := l.VarID()
 
@@ -628,20 +638,6 @@ func (s *Solver) undoOne() {
 func (s *Solver) assume(l Literal) bool {
 	s.trailLim = append(s.trailLim, len(s.trail))
 	return s.enqueue(l, nil)
-}
-
-func (s *Solver) cancel() {
-	c := len(s.trail) - s.trailLim[len(s.trailLim)-1]
-	for ; c != 0; c-- {
-		s.undoOne()
-	}
-	s.trailLim = s.trailLim[:len(s.trailLim)-1]
-}
-
-func (s *Solver) cancelUntil(level int) {
-	for s.decisionLevel() > level {
-		s.cancel()
-	}
 }
 
 func (s *Solver) saveModel() {
