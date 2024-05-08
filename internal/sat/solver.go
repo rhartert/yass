@@ -18,11 +18,10 @@ type Solver struct {
 	nextReduceIncr int64
 
 	// Variable ordering.
-	activities  []float64
-	varInc      float64
-	varDecay    float64
-	order       *VarOrder
-	phaseSaving bool
+	activities []float64
+	varInc     float64
+	varDecay   float64
+	order      *VarOrder
 
 	// Propagation and watchers.
 	watchers  [][]watcher
@@ -126,8 +125,10 @@ func NewSolver(ops Options) *Solver {
 		seenVar:        &ResetSet{},
 		tmpLearnts:     make([]Literal, 0, 32),
 		tmpReason:      make([]Literal, 0, 32),
-		phaseSaving:    ops.PhaseSaving,
 	}
+
+	s.order = NewVarOrder(s)
+	s.order.phaseSaving = ops.PhaseSaving
 
 	if ops.MaxConflicts >= 0 {
 		s.hasStopCond = true
@@ -202,7 +203,7 @@ func (s *Solver) AddVariable() int {
 
 	s.level = append(s.level, -1)
 	s.activities = append(s.activities, 0)
-	s.order.NewVar()
+	s.order.AddVar()
 	return index
 }
 
@@ -331,8 +332,6 @@ func (s *Solver) decisionLevel() int {
 func (s *Solver) Solve() LBool {
 	numConflicts := 100
 	status := Unknown
-	s.order = NewVarOrder(s, s.NumVariables())
-	s.order.phaseSaving = s.phaseSaving
 	s.startTime = time.Now()
 
 	s.printSeparator()
