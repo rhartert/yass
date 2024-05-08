@@ -372,11 +372,11 @@ func (s *Solver) BumpVarActivity(l Literal) {
 }
 
 func (s *Solver) DecayClaActivity() {
-	s.clauseInc *= s.clauseDecay
+	s.clauseInc /= s.clauseDecay // decay activities by bumping increment
 }
 
 func (s *Solver) DecayVarActivity() {
-	s.varInc *= s.varDecay
+	s.varInc /= s.varDecay // decay activities by bumping increment
 }
 
 func (s *Solver) Propagate() *Clause {
