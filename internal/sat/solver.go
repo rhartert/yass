@@ -191,7 +191,7 @@ func (s *Solver) AddVariable() int {
 	s.assignLevels = append(s.assignLevels, -1)
 	s.assigns = append(s.assigns, Unknown, Unknown) // one for each literal
 
-	s.order.AddVar(0.0, false)
+	s.order.AddVar(0.0, true)
 	return index
 }
 
