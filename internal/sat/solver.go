@@ -29,8 +29,16 @@ type Solver struct {
 	clauseInc   float64
 	clauseDecay float64
 
-	nextReduce     int64
-	nextReduceIncr int64
+	// Threshold in terms of total number of conflicts after which a reduction
+	// of the clause DB is triggered. This value is adapted dynamically during
+	// search (see below).
+	conflictBeforeReduce uint64
+
+	// Number of conflicts by which the above threshold is increased after each
+	// reduction of the clause DB. That increment itself is increased by
+	// conflictBeforeReduceIncInc after each reduction.
+	conflictBeforeReduceInc    uint64
+	conflictBeforeReduceIncInc uint64
 
 	// List of watcher for each literal.
 	watchers [][]watcher
@@ -43,9 +51,9 @@ type Solver struct {
 	trailLim []int
 
 	// Search statistics.
-	TotalConflicts  int64
-	TotalRestarts   int64
-	TotalIterations int64
+	TotalConflicts  uint64
+	TotalRestarts   uint64
+	TotalIterations uint64
 	startTime       time.Time
 
 	// Stop conditions.
@@ -115,18 +123,18 @@ func NewDefaultSolver() *Solver {
 
 func NewSolver(ops Options) *Solver {
 	s := &Solver{
-		clauseDecay:    ops.ClauseDecay,
-		clauseInc:      1,
-		order:          NewVarOrder(ops.VariableDecay, ops.PhaseSaving),
-		propQueue:      NewQueue[Literal](128),
-		maxConflict:    -1,
-		timeout:        -1,
-		nextReduce:     4000,
-		nextReduceIncr: 300,
-		seenLevel:      &ResetSet{},
-		seenVar:        &ResetSet{},
-		tmpLearnts:     make([]Literal, 0, 32),
-		tmpReason:      make([]Literal, 0, 32),
+		clauseDecay:                ops.ClauseDecay,
+		clauseInc:                  1,
+		order:                      NewVarOrder(ops.VariableDecay, ops.PhaseSaving),
+		propQueue:                  NewQueue[Literal](128),
+		maxConflict:                -1,
+		timeout:                    -1,
+		conflictBeforeReduceInc:    2000,
+		conflictBeforeReduceIncInc: 300,
+		seenLevel:                  &ResetSet{},
+		seenVar:                    &ResetSet{},
+		tmpLearnts:                 make([]Literal, 0, 32),
+		tmpReason:                  make([]Literal, 0, 32),
 	}
 
 	if ops.MaxConflicts >= 0 {
@@ -145,7 +153,7 @@ func (s *Solver) shouldStop() bool {
 	if !s.hasStopCond {
 		return false
 	}
-	if s.maxConflict >= 0 && s.maxConflict <= s.TotalConflicts {
+	if s.maxConflict >= 0 && uint64(s.maxConflict) <= s.TotalConflicts {
 		return true
 	}
 	if s.timeout >= 0 && s.timeout <= time.Since(s.startTime) {
@@ -268,57 +276,12 @@ func (s *Solver) simplifyPtr(clausesPtr *[]*Clause) {
 	*clausesPtr = clauses[:j]
 }
 
-func (s *Solver) ReduceDB() {
-	// Sort learnt clauses from "the worst" to "the best".
-	sort.Slice(s.learnts, func(i, j int) bool {
-		ci := s.learnts[i]
-		cj := s.learnts[j]
-
-		switch {
-		case len(ci.literals) > 2 && len(cj.literals) == 2:
-			return true
-		case ci.lbd > cj.lbd:
-			return true
-		case ci.activity < cj.activity:
-			return true
-		default:
-			return false
-		}
-	})
-
-	// Protect the 10% best clause.
-	for i := len(s.learnts) * 90 / 100; i < len(s.learnts); i++ {
-		s.learnts[i].isProtected = true
-	}
-
-	toDelete := len(s.learnts) / 2
-
-	i, j := 0, 0
-	for ; i < len(s.learnts); i++ {
-		c := s.learnts[i]
-
-		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.isProtected {
-			toDelete--
-			c.Remove(s)
-		} else {
-			if c.isProtected {
-				c.isProtected = false
-				toDelete++
-			}
-			s.learnts[j] = s.learnts[i]
-			j++
-		}
-	}
-
-	s.learnts = s.learnts[:j]
-}
-
 func (s *Solver) decisionLevel() int {
 	return len(s.trailLim)
 }
 
 func (s *Solver) Solve() LBool {
-	numConflicts := 100
+	numConflicts := uint64(100)
 	status := Unknown
 	s.startTime = time.Now()
 
@@ -344,17 +307,23 @@ func (s *Solver) Solve() LBool {
 
 func (s *Solver) BumpClaActivity(c *Clause) {
 	c.activity += s.clauseInc
-
 	if c.activity > 1e100 {
-		s.clauseInc *= 1e-100 // important to keep proportions
-		for _, l := range s.learnts {
-			l.activity *= 1e-100
-		}
+		s.rescaleClauseActivitiesAndIncrement()
 	}
 }
 
 func (s *Solver) DecayClaActivity() {
 	s.clauseInc /= s.clauseDecay // decay activities by bumping increment
+	if s.clauseInc > 1e100 {
+		s.rescaleClauseActivitiesAndIncrement()
+	}
+}
+
+func (s *Solver) rescaleClauseActivitiesAndIncrement() {
+	s.clauseInc *= 1e-100 // important to keep proportions
+	for _, l := range s.learnts {
+		l.activity *= 1e-100
+	}
 }
 
 func (s *Solver) Propagate() *Clause {
@@ -524,13 +493,14 @@ func (s *Solver) record(clause []Literal, lbd int) {
 	}
 }
 
-func (s *Solver) Search(nConflicts int) LBool {
+func (s *Solver) Search(nConflicts uint64) LBool {
+	s.TotalRestarts++
+
 	if s.unsat {
 		return False
 	}
 
-	s.TotalRestarts++
-	conflictCount := 0
+	conflictLimit := s.TotalConflicts + nConflicts
 
 	for !s.shouldStop() {
 		if s.TotalIterations%100000 == 0 {
@@ -539,7 +509,6 @@ func (s *Solver) Search(nConflicts int) LBool {
 		s.TotalIterations++
 
 		if conflict := s.Propagate(); conflict != nil {
-			conflictCount++
 			s.TotalConflicts++
 
 			if s.decisionLevel() == 0 {
@@ -561,13 +530,14 @@ func (s *Solver) Search(nConflicts int) LBool {
 		// No Conflict
 		// -----------
 
-		if s.TotalConflicts >= s.nextReduce {
-			s.nextReduce += (s.nextReduceIncr) * s.TotalRestarts
-			s.ReduceDB()
-		}
-
 		if s.decisionLevel() == 0 {
 			s.Simplify()
+		}
+
+		if s.TotalConflicts >= s.conflictBeforeReduce {
+			s.conflictBeforeReduceInc += s.conflictBeforeReduceIncInc
+			s.conflictBeforeReduce += s.conflictBeforeReduceInc
+			s.ReduceDB()
 		}
 
 		if s.NumAssigns() == s.NumVariables() { // solution found
@@ -576,7 +546,7 @@ func (s *Solver) Search(nConflicts int) LBool {
 			return True
 		}
 
-		if conflictCount > nConflicts {
+		if s.TotalConflicts > conflictLimit {
 			s.backtrackTo(0)
 			return Unknown
 		}
@@ -586,6 +556,51 @@ func (s *Solver) Search(nConflicts int) LBool {
 	}
 
 	return Unknown
+}
+
+func (s *Solver) ReduceDB() {
+	// Sort learnt clauses from "the worst" to "the best".
+	sort.Slice(s.learnts, func(i, j int) bool {
+		ci := s.learnts[i]
+		cj := s.learnts[j]
+
+		switch {
+		case len(ci.literals) > 2 && len(cj.literals) == 2:
+			return true
+		case ci.lbd > cj.lbd:
+			return true
+		case ci.activity < cj.activity:
+			return true
+		default:
+			return false
+		}
+	})
+
+	// Protect the 10% best clause.
+	for i := len(s.learnts) * 90 / 100; i < len(s.learnts); i++ {
+		s.learnts[i].isProtected = true
+	}
+
+	toDelete := len(s.learnts) / 2
+
+	i, j := 0, 0
+	for ; i < len(s.learnts); i++ {
+		c := s.learnts[i]
+
+		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.isProtected {
+			toDelete--
+			c.Remove(s)
+		} else {
+			if c.isProtected {
+				c.isProtected = false
+				toDelete++
+			}
+			s.learnts[j] = s.learnts[i]
+			j++
+		}
+	}
+
+	s.learnts = s.learnts[:j]
 }
 
 func (s *Solver) backtrackTo(level int) {
