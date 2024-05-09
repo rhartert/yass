@@ -187,7 +187,7 @@ func (s *Solver) AddVariable() int {
 	s.assigns = append(s.assigns, Unknown)
 
 	s.level = append(s.level, -1)
-	s.order.AddVar(0.0, Unknown)
+	s.order.AddVar(0.0, false)
 	return index
 }
 

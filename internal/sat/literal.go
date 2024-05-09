@@ -6,10 +6,12 @@ import "fmt"
 // its negation.
 type Literal int
 
+// PositiveLiteral returns the positive literal of variable v.
 func PositiveLiteral(v int) Literal {
 	return Literal(v * 2)
 }
 
+// NegativeLiteral returns the negative literal of variable v.
 func NegativeLiteral(v int) Literal {
 	return Literal(v*2 + 1)
 }
