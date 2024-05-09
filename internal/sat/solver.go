@@ -8,6 +8,21 @@ import (
 )
 
 type Solver struct {
+	// Variable ordering.
+	order *VarOrder
+
+	// Whether the solver has reached a top level conflict or not.
+	unsat bool
+
+	// Value assigned to each literal.
+	assigns []LBool
+
+	// Clause responsible for assigning a variable (nil if unnassigned)
+	assignReasons []*Clause
+
+	// Level at which each variable was assigned (-1 if unnassigned).
+	assignLevels []int
+
 	// Clause database.
 	constraints []*Clause
 	learnts     []*Clause
@@ -17,24 +32,15 @@ type Solver struct {
 	nextReduce     int64
 	nextReduceIncr int64
 
-	// Variable ordering.
-	order *VarOrder
+	// List of watcher for each literal.
+	watchers [][]watcher
 
-	// Propagation and watchers.
-	watchers  [][]watcher
+	// Queue of recently assigned literal that still have to be propagated.
 	propQueue *Queue[Literal]
-
-	// Value assigned ot each literal.
-	assigns []LBool
 
 	// Trail.
 	trail    []Literal
 	trailLim []int
-	reason   []*Clause
-	level    []int
-
-	// Whether the problem has reached a top level conflict.
-	unsat bool
 
 	// Search statistics.
 	TotalConflicts  int64
@@ -177,16 +183,14 @@ func (s *Solver) AddVariable() int {
 	index := s.NumVariables()
 	s.watchers = append(s.watchers, nil)
 	s.watchers = append(s.watchers, nil)
-	s.reason = append(s.reason, nil)
 
 	s.seenVar.Expand()
 	s.seenLevel.Expand()
 
-	// One for each literal.
-	s.assigns = append(s.assigns, Unknown)
-	s.assigns = append(s.assigns, Unknown)
+	s.assignReasons = append(s.assignReasons, nil)
+	s.assignLevels = append(s.assignLevels, -1)
+	s.assigns = append(s.assigns, Unknown, Unknown) // one for each literal
 
-	s.level = append(s.level, -1)
 	s.order.AddVar(0.0, false)
 	return index
 }
@@ -399,8 +403,8 @@ func (s *Solver) enqueue(l Literal, from *Clause) bool {
 		varID := l.VarID()
 		s.assigns[l] = True
 		s.assigns[l.Opposite()] = False
-		s.level[varID] = s.decisionLevel()
-		s.reason[varID] = from
+		s.assignLevels[varID] = s.decisionLevel()
+		s.assignReasons[varID] = from
 		s.trail = append(s.trail, l)
 		s.propQueue.Push(l)
 		return true
@@ -443,13 +447,13 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 			}
 
 			s.seenVar.Add(v)
-			if s.level[v] == s.decisionLevel() {
+			if s.assignLevels[v] == s.decisionLevel() {
 				nImplicationPoints++
 				continue
 			}
 
 			s.tmpLearnts = append(s.tmpLearnts, q.Opposite())
-			if level := s.level[v]; level > backtrackLevel {
+			if level := s.assignLevels[v]; level > backtrackLevel {
 				backtrackLevel = level
 			}
 		}
@@ -472,7 +476,7 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 			l = s.trail[nextLiteral]
 			nextLiteral--
 			v := l.VarID()
-			confl = s.reason[v]
+			confl = s.assignReasons[v]
 			if s.seenVar.Contains(v) {
 				break
 			}
@@ -496,7 +500,7 @@ func (s *Solver) computeLBD(literals []Literal) int {
 	lbd := 0
 	s.seenLevel.Clear()
 	for _, lit := range literals {
-		l := s.level[lit.VarID()]
+		l := s.assignLevels[lit.VarID()]
 		if !s.seenLevel.Contains(l) {
 			s.seenLevel.Add(l)
 			lbd++
@@ -601,8 +605,8 @@ func (s *Solver) unnassignedLast() {
 	s.order.Reinsert(v, s.VarValue(v))
 	s.assigns[l] = Unknown
 	s.assigns[l.Opposite()] = Unknown
-	s.reason[v] = nil
-	s.level[v] = -1
+	s.assignReasons[v] = nil
+	s.assignLevels[v] = -1
 
 	s.trail = s.trail[:len(s.trail)-1]
 }

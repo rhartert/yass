@@ -75,7 +75,7 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 			maxLevel := -1
 			wl := -1
 			for i := 1; i < len(c.literals); i++ {
-				if level := s.level[c.literals[i].VarID()]; level > maxLevel {
+				if level := s.assignLevels[c.literals[i].VarID()]; level > maxLevel {
 					maxLevel = level
 					wl = i
 				}
@@ -91,7 +91,7 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 }
 
 func (c *Clause) locked(solver *Solver) bool {
-	return solver.reason[c.literals[0].VarID()] == c
+	return solver.assignReasons[c.literals[0].VarID()] == c
 }
 
 func (c *Clause) Remove(s *Solver) {
