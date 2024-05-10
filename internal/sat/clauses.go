@@ -7,7 +7,14 @@ import (
 type Clause struct {
 	activity float64
 
-	// The clause's literals. Must always contain at least two literals.
+	// Reference the slice that was originally obtained from the slice pool
+	// using allocSlice. The reference is used to put back the slice into the
+	// pool for other clauses to use.
+	sliceRef *[]Literal
+
+	// The clause's literals which must contains at least two literals. The
+	// clause must be the sole owner of this slice which will become invalid
+	// as soon as the clause is deleted.
 	literals []Literal
 
 	// Learnt clause properties
@@ -68,7 +75,9 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 		// Actually create the clause.
 		c := &Clause{}
 		c.learnt = learnt
-		c.literals = make([]Literal, 0, len(tmpLiterals))
+
+		c.sliceRef = allocSlice(uint(size))
+		c.literals = *c.sliceRef
 		c.literals = append(c.literals, tmpLiterals...)
 
 		if learnt {
@@ -94,9 +103,12 @@ func (c *Clause) locked(solver *Solver) bool {
 	return solver.assignReasons[c.literals[0].VarID()] == c
 }
 
-func (c *Clause) Remove(s *Solver) {
+func (c *Clause) Delete(s *Solver) {
 	s.Unwatch(c, c.literals[0].Opposite())
 	s.Unwatch(c, c.literals[1].Opposite())
+
+	*c.sliceRef = c.literals
+	freeSlice(c.sliceRef)
 }
 
 func (c *Clause) Simplify(s *Solver) bool {

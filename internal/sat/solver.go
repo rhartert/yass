@@ -267,7 +267,7 @@ func (s *Solver) simplifyPtr(clausesPtr *[]*Clause) {
 	j := 0
 	for i := 0; i < len(clauses); i++ {
 		if clauses[i].Simplify(s) {
-			clauses[i].Remove(s)
+			clauses[i].Delete(s)
 		} else {
 			clauses[j] = clauses[i]
 			j++
@@ -589,7 +589,7 @@ func (s *Solver) ReduceDB() {
 
 		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.isProtected {
 			toDelete--
-			c.Remove(s)
+			c.Delete(s)
 		} else {
 			if c.isProtected {
 				c.isProtected = false
