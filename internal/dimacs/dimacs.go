@@ -2,7 +2,9 @@ package dimacs
 
 import (
 	"bufio"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -16,15 +18,23 @@ type Instance struct {
 	Comments  []string
 }
 
-func ParseDIMACS(filename string) (*Instance, error) {
+func ParseDIMACS(filename string, gzipped bool) (*Instance, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
+	reader := io.Reader(file)
+	if gzipped {
+		reader, err = gzip.NewReader(reader)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	instance := &Instance{}
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(reader)
 	stop := false
 	for i := 0; scanner.Scan() && !stop; i++ {
 		line := scanner.Text()

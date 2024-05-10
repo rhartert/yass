@@ -123,7 +123,7 @@ func TestSolveAll(t *testing.T) {
 		t.Run(tc.instanceName, func(t *testing.T) {
 			t.Parallel()
 
-			instance, err := dimacs.ParseDIMACS(tc.instanceFile)
+			instance, err := dimacs.ParseDIMACS(tc.instanceFile, false)
 			if err != nil {
 				t.Errorf("Instance parsing error: %s", err)
 			}

@@ -42,6 +42,12 @@ var flagPhaseSaving = flag.Bool(
 	"enable phase saving in search strategy",
 )
 
+var flagGzipInput = flag.Bool(
+	"gzip",
+	false,
+	"gzipped input DIMACS file",
+)
+
 func parseConfig() (*config, error) {
 	flag.Parse()
 
@@ -50,6 +56,7 @@ func parseConfig() (*config, error) {
 	}
 	return &config{
 		instanceFile: flag.Arg(0),
+		gzippedFile:  *flagGzipInput,
 		memProfile:   *flagMemProfile,
 		cpuProfile:   *flagCPUProfile,
 		maxConflicts: *flagMaxConflict,
@@ -60,6 +67,7 @@ func parseConfig() (*config, error) {
 
 type config struct {
 	instanceFile string
+	gzippedFile  bool
 	memProfile   bool
 	cpuProfile   bool
 	maxConflicts int64
@@ -80,7 +88,7 @@ func solverOptions(cfg *config) sat.Options {
 }
 
 func run(cfg *config) error {
-	instance, err := dimacs.ParseDIMACS(cfg.instanceFile)
+	instance, err := dimacs.ParseDIMACS(cfg.instanceFile, cfg.gzippedFile)
 	if err != nil {
 		return fmt.Errorf("could not parse instance: %s", err)
 	}
