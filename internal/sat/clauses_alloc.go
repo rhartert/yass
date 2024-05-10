@@ -9,7 +9,7 @@ import (
 const nPools = 4
 
 // The minimum capacity for slices in the last pool.
-const lastCapa = uint(1 << nPools)
+const lastCapa = 1 << nPools
 
 // Pools of slices with different capacities so that pool i contains slices with
 // a capacity between 2^(i+1) and 2^(i+2)-1 inclusive. The last pool k contains
@@ -29,11 +29,11 @@ func init() {
 }
 
 // pid returns the ID of the pool responsible for slice of the given capacity.
-func pid(capa uint) int {
+func pid(capa int) int {
 	if capa >= lastCapa {
 		return nPools - 1
 	}
-	pid := bits.Len(capa) - 1
+	pid := bits.Len(uint(capa)) - 1
 	if capa < (1 << pid) {
 		pid--
 	}
@@ -41,13 +41,26 @@ func pid(capa uint) int {
 }
 
 // allocLiteral returns an empty slice that has at least the requested capacity.
-func allocSlice(capa uint) *[]Literal {
-	return pools[pid(capa)].Get().(*[]Literal)
+func allocSlice(capa int) *[]Literal {
+	ref := pools[pid(capa)].Get().(*[]Literal)
+	if capa < lastCapa {
+		return ref
+	}
+
+	// If the slice comes from the last pool, we need to ensure that it has
+	// enough capacity. If not, we drop the returned slice and replace it with
+	// a newly allocated slice that has the requested capacity.
+	if cap(*ref) < capa {
+		s := make([]Literal, 0, capa)
+		ref = &s
+	}
+
+	return ref
 }
 
 // freeSlice returns the reference slice so that it can be allocated to another
 // clause via allocSlice.
 func freeSlice(s *[]Literal) {
 	*s = (*s)[:0] // reset the size
-	pools[pid(uint(cap(*s)))].Put(s)
+	pools[pid(cap(*s))].Put(s)
 }

@@ -76,7 +76,7 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 		c := &Clause{}
 		c.learnt = learnt
 
-		c.sliceRef = allocSlice(uint(size))
+		c.sliceRef = allocSlice(size) // reuse already allocated slices
 		c.literals = *c.sliceRef
 		c.literals = append(c.literals, tmpLiterals...)
 
@@ -108,7 +108,7 @@ func (c *Clause) Delete(s *Solver) {
 	s.Unwatch(c, c.literals[1].Opposite())
 
 	*c.sliceRef = c.literals
-	freeSlice(c.sliceRef)
+	freeSlice(c.sliceRef) // give the slice back for other clauses to use
 }
 
 func (c *Clause) Simplify(s *Solver) bool {
