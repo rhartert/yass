@@ -4,7 +4,7 @@ import "fmt"
 
 // Literal represents a literal, which either represent a boolean variable or
 // its negation.
-type Literal int
+type Literal uint32
 
 // PositiveLiteral returns the positive literal of variable v.
 func PositiveLiteral(v int) Literal {
