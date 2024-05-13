@@ -103,8 +103,9 @@ func run(cfg *config) error {
 	status := s.Solve()
 	elapsed := time.Since(t)
 
+	stats := s.Statistics
 	fmt.Printf("c time (sec): %f\n", elapsed.Seconds())
-	fmt.Printf("c conflicts:  %d (%.2f /sec)\n", s.TotalConflicts, float64(s.TotalConflicts)/elapsed.Seconds())
+	fmt.Printf("c conflicts:  %d (%.2f /sec)\n", stats.Conflicts, float64(stats.Conflicts)/elapsed.Seconds())
 	fmt.Printf("c status:     %s\n", status.String())
 
 	return nil

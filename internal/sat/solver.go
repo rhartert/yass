@@ -7,6 +7,15 @@ import (
 	"time"
 )
 
+type Statistics struct {
+	Propagations uint64
+	Guards       uint64
+	Conflicts    uint64
+	Iterations   uint64
+	Decisions    uint64
+	Restarts     uint64
+}
+
 type Solver struct {
 	// Variable ordering.
 	order *VarOrder
@@ -51,12 +60,10 @@ type Solver struct {
 	trailLim []int
 
 	// Search statistics.
-	TotalConflicts  uint64
-	TotalRestarts   uint64
-	TotalIterations uint64
-	startTime       time.Time
+	Statistics Statistics
 
 	// Stop conditions.
+	startTime   time.Time
 	hasStopCond bool
 	maxConflict int64
 	timeout     time.Duration
@@ -153,7 +160,7 @@ func (s *Solver) shouldStop() bool {
 	if !s.hasStopCond {
 		return false
 	}
-	if s.maxConflict >= 0 && uint64(s.maxConflict) <= s.TotalConflicts {
+	if s.maxConflict >= 0 && uint64(s.maxConflict) <= s.Statistics.Conflicts {
 		return true
 	}
 	if s.timeout >= 0 && s.timeout <= time.Since(s.startTime) {
@@ -283,7 +290,9 @@ func (s *Solver) decisionLevel() int {
 func (s *Solver) Solve() LBool {
 	numConflicts := uint64(100)
 	status := Unknown
+
 	s.startTime = time.Now()
+	s.Statistics = Statistics{}
 
 	s.printSeparator()
 	s.printSearchHeader()
@@ -335,6 +344,8 @@ func (s *Solver) Propagate() *Clause {
 		s.watchers[l] = s.watchers[l][:0]
 
 		for i, w := range s.tmpWatchers {
+			s.Statistics.Propagations++
+
 			// No need to propagate the clause if its guard is true. This block
 			// is not necessary for propagation to behave properly. However, it
 			// helps to significantly speed-up computation by avoiding loading
@@ -342,6 +353,7 @@ func (s *Solver) Propagate() *Clause {
 			// this alters the order in which clause are propagated and can thus
 			// yield to different conflict analysis and learnt clauses.
 			if s.LitValue(w.guard) == True {
+				s.Statistics.Guards++
 				s.watchers[l] = append(s.watchers[l], w)
 				continue
 			}
@@ -497,22 +509,22 @@ func (s *Solver) record(clause []Literal, lbd int) {
 }
 
 func (s *Solver) Search(nConflicts uint64) LBool {
-	s.TotalRestarts++
+	s.Statistics.Restarts++
 
 	if s.unsat {
 		return False
 	}
 
-	conflictLimit := s.TotalConflicts + nConflicts
+	conflictLimit := s.Statistics.Conflicts + nConflicts
 
 	for !s.shouldStop() {
-		if s.TotalIterations%100000 == 0 {
+		if s.Statistics.Iterations%100000 == 0 {
 			s.printSearchStats()
 		}
-		s.TotalIterations++
+		s.Statistics.Iterations++
 
 		if conflict := s.Propagate(); conflict != nil {
-			s.TotalConflicts++
+			s.Statistics.Conflicts++
 
 			if s.decisionLevel() == 0 {
 				s.unsat = true
@@ -537,7 +549,7 @@ func (s *Solver) Search(nConflicts uint64) LBool {
 			s.Simplify()
 		}
 
-		if s.TotalConflicts >= s.conflictBeforeReduce {
+		if s.Statistics.Conflicts >= s.conflictBeforeReduce {
 			s.conflictBeforeReduceInc += s.conflictBeforeReduceIncInc
 			s.conflictBeforeReduce += s.conflictBeforeReduceInc
 			s.ReduceDB()
@@ -549,7 +561,7 @@ func (s *Solver) Search(nConflicts uint64) LBool {
 			return True
 		}
 
-		if s.TotalConflicts > conflictLimit {
+		if s.Statistics.Conflicts > conflictLimit {
 			s.backtrackTo(0)
 			return Unknown
 		}
@@ -658,8 +670,8 @@ func (s *Solver) printSearchStats() {
 	fmt.Printf(
 		"c %14.3fs %14d %14d %14d %14d\n",
 		time.Since(s.startTime).Seconds(),
-		s.TotalIterations,
-		s.TotalConflicts,
-		s.TotalRestarts,
+		s.Statistics.Iterations,
+		s.Statistics.Conflicts,
+		s.Statistics.Restarts,
 		len(s.learnts))
 }
