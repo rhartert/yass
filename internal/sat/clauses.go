@@ -7,15 +7,15 @@ import (
 type Clause struct {
 	activity float64
 
-	// Reference the slice that was originally obtained from the slice pool
-	// using allocSlice. The reference is used to put back the slice into the
-	// pool for other clauses to use.
-	sliceRef *[]Literal
-
 	// The clause's literals which must contains at least two literals. The
 	// clause must be the sole owner of this slice which will become invalid
 	// as soon as the clause is deleted.
 	literals []Literal
+
+	// Reference the slice that was originally obtained from the slice pool
+	// using allocSlice. The reference is used to put back the slice into the
+	// pool for other clauses to use once this clause is deleted.
+	sliceRef *[]Literal
 
 	// Learnt clause properties
 	// ------------------------
@@ -161,26 +161,20 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 	return s.enqueue(c.literals[0], c)
 }
 
-func (c *Clause) ExplainFailure(s *Solver) []Literal {
-	s.tmpReason = s.tmpReason[:0]
+func (c *Clause) explainConflict(outReason *[]Literal) {
+	exp := (*outReason)[:0]
 	for _, l := range c.literals {
-		s.tmpReason = append(s.tmpReason, l.Opposite())
+		exp = append(exp, l.Opposite())
 	}
-	if c.learnt {
-		s.BumpClaActivity(c)
-	}
-	return s.tmpReason
+	*outReason = exp
 }
 
-func (c *Clause) ExplainAssign(s *Solver, l Literal) []Literal {
-	s.tmpReason = s.tmpReason[:0]
-	for i := 1; i < len(c.literals); i++ {
-		s.tmpReason = append(s.tmpReason, c.literals[i].Opposite())
+func (c *Clause) explainAssign(outReason *[]Literal) {
+	exp := (*outReason)[:0]
+	for _, l := range c.literals[1:] {
+		exp = append(exp, l.Opposite())
 	}
-	if c.learnt {
-		s.BumpClaActivity(c)
-	}
-	return s.tmpReason
+	*outReason = exp
 }
 
 func (c *Clause) String() string {

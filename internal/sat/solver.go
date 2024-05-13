@@ -380,15 +380,7 @@ func (s *Solver) enqueue(l Literal, from *Clause) bool {
 	}
 }
 
-func (s *Solver) explain(c *Clause, l Literal) []Literal {
-	if l == -1 {
-		return c.ExplainFailure(s)
-	} else {
-		return c.ExplainAssign(s, l)
-	}
-}
-
-func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
+func (s *Solver) analyze(conflicting *Clause) ([]Literal, int, int) {
 	// Current number of "implication" nodes encountered in the exploration of
 	// the decision level. A value of 0 indicates that the exploration has
 	// reached a single implication point.
@@ -398,54 +390,65 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 	// Note that the first literal is reserved for the FUIP which is set at the
 	// end of this function.
 	s.tmpLearnts = s.tmpLearnts[:0]
-	s.tmpLearnts = append(s.tmpLearnts, -1)
+	s.tmpLearnts = append(s.tmpLearnts, 0)
 
-	// Next literal to look at. This is used to iterate over the trail without
-	// actually undoing the literal assignments.
-	nextLiteral := len(s.trail) - 1
+	// Clause to generate an explanation, starting with the conflicting clause.
+	c := conflicting
 
-	l := Literal(-1) // unknown literal used to represent the conflict
+	// Position of the next literal on the trail to be inspected. Note that
+	// no literal is inspected in the first iteration of the analysis loop as
+	// it focuses on explaining the conflict.
+	trailTop := len(s.trail)
+
 	s.seenVar.Clear()
 	backtrackLevel := 0
 
 	for {
-		for _, q := range s.explain(confl, l) {
+		if c == conflicting {
+			c.explainConflict(&s.tmpReason)
+		} else {
+			c.explainAssign(&s.tmpReason)
+		}
+		if c.learnt {
+			s.BumpClaActivity(c)
+		}
+
+		for _, q := range s.tmpReason {
 			v := q.VarID()
 			if s.seenVar.Contains(v) {
 				continue
 			}
 
 			s.seenVar.Add(v)
-			if s.assignLevels[v] == s.decisionLevel() {
+
+			level := s.assignLevels[v]
+			if level == s.decisionLevel() {
 				nImplicationPoints++
 				continue
 			}
 
+			backtrackLevel = max(backtrackLevel, level)
 			s.tmpLearnts = append(s.tmpLearnts, q.Opposite())
-			if level := s.assignLevels[v]; level > backtrackLevel {
-				backtrackLevel = level
-			}
 		}
 
-		if confl.learnt && confl.lbd > 2 {
+		if c.learnt && c.lbd > 2 {
 			// Opportunistically recompute the LBD of the clause as all its
 			// literals are guaranteed to be assigned at this point.
-			newLBD := s.computeLBD(confl.literals)
+			newLBD := s.computeLBD(c.literals)
 
 			// Clauses with an improving LBD are considered interesting and
 			// worth protecting for a round.
-			if newLBD < 30 && newLBD < confl.lbd {
-				confl.isProtected = true
+			if newLBD < 30 && newLBD < c.lbd {
+				c.isProtected = true
 			}
-			confl.lbd = newLBD
+			c.lbd = newLBD
 		}
 
 		// Select next literal to look at.
 		for {
-			l = s.trail[nextLiteral]
-			nextLiteral--
-			v := l.VarID()
-			confl = s.assignReasons[v]
+			trailTop--
+			v := s.trail[trailTop].VarID()
+			c = s.assignReasons[v]
 			if s.seenVar.Contains(v) {
 				break
 			}
@@ -457,7 +460,7 @@ func (s *Solver) analyze(confl *Clause) ([]Literal, int, int) {
 		}
 	}
 
-	s.tmpLearnts[0] = l.Opposite()
+	s.tmpLearnts[0] = s.trail[trailTop].Opposite()
 	lbd := s.computeLBD(s.tmpLearnts)
 
 	return s.tmpLearnts, lbd, backtrackLevel
