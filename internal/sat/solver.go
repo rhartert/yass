@@ -421,7 +421,7 @@ func (s *Solver) analyze(conflicting *Clause) ([]Literal, int, int) {
 		} else {
 			c.explainAssign(&s.tmpReason)
 		}
-		if c.learnt {
+		if c.isLearnt() {
 			s.BumpClaActivity(c)
 		}
 
@@ -443,7 +443,7 @@ func (s *Solver) analyze(conflicting *Clause) ([]Literal, int, int) {
 			s.tmpLearnts = append(s.tmpLearnts, q.Opposite())
 		}
 
-		if c.learnt && c.lbd > 2 {
+		if c.isLearnt() && c.lbd > 2 {
 			// Opportunistically recompute the LBD of the clause as all its
 			// literals are guaranteed to be assigned at this point.
 			newLBD := s.computeLBD(c.literals)
@@ -451,7 +451,7 @@ func (s *Solver) analyze(conflicting *Clause) ([]Literal, int, int) {
 			// Clauses with an improving LBD are considered interesting and
 			// worth protecting for a round.
 			if newLBD < 30 && newLBD < c.lbd {
-				c.isProtected = true
+				c.setProtected()
 			}
 			c.lbd = newLBD
 		}
@@ -593,7 +593,7 @@ func (s *Solver) ReduceDB() {
 
 	// Protect the 10% best clause.
 	for i := len(s.learnts) * 90 / 100; i < len(s.learnts); i++ {
-		s.learnts[i].isProtected = true
+		s.learnts[i].setProtected()
 	}
 
 	toDelete := len(s.learnts) / 2
@@ -602,12 +602,12 @@ func (s *Solver) ReduceDB() {
 	for ; i < len(s.learnts); i++ {
 		c := s.learnts[i]
 
-		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.isProtected {
+		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.isProtected() {
 			toDelete--
 			c.Delete(s)
 		} else {
-			if c.isProtected {
-				c.isProtected = false
+			if c.isProtected() {
+				c.setUnprotected()
 				toDelete++
 			}
 			s.learnts[j] = s.learnts[i]

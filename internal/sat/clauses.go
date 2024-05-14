@@ -4,31 +4,43 @@ import (
 	"strings"
 )
 
+type status uint8
+
+const (
+	statusDeleted   status = 0b001
+	statusLearnt    status = 0b010
+	statusProtected status = 0b100
+)
+
 type Clause struct {
 	activity float64
 
-	// The clause's literals which must contains at least two literals. The
-	// clause must be the sole owner of this slice which will become invalid
-	// as soon as the clause is deleted.
+	// The clause's literals. The slice contains at least two literals if the
+	// clause is active, it is nil if the clause has been marked as deleted.
 	literals []Literal
-
-	// Reference the slice that was originally obtained from the slice pool
-	// using allocSlice. The reference is used to put back the slice into the
-	// pool for other clauses to use once this clause is deleted.
-	sliceRef *[]Literal
-
-	// Learnt clause properties
-	// ------------------------
-
-	// Whether the clause was learnt or not.
-	learnt bool
-
-	// The literal block distance used to estimate the quality of the clause.
-	lbd int
 
 	// If true, the clause will not be deleted in the next clause DB clean up.
 	// This is only relevant to learnt clauses.
-	isProtected bool
+	statusMask status
+
+	// The literal block distance used to estimate the quality of the clause.
+	lbd int
+}
+
+func (c *Clause) isProtected() bool {
+	return c.statusMask&statusProtected != 0
+}
+
+func (c *Clause) setProtected() {
+	c.statusMask |= statusProtected
+}
+
+func (c *Clause) setUnprotected() {
+	c.statusMask &= ^statusProtected
+}
+
+func (c *Clause) isLearnt() bool {
+	return c.statusMask&statusLearnt != 0
 }
 
 func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
@@ -74,13 +86,13 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 	default:
 		// Actually create the clause.
 		c := &Clause{}
-		c.learnt = learnt
 
-		c.sliceRef = allocSlice(size) // reuse already allocated slices
-		c.literals = *c.sliceRef
-		c.literals = append(c.literals, tmpLiterals...)
+		c.literals = make([]Literal, size)
+		copy(c.literals, tmpLiterals)
 
 		if learnt {
+			c.statusMask |= statusLearnt
+
 			maxLevel := -1
 			wl := -1
 			for i := 1; i < len(c.literals); i++ {
@@ -104,11 +116,14 @@ func (c *Clause) locked(solver *Solver) bool {
 }
 
 func (c *Clause) Delete(s *Solver) {
+	c.statusMask |= statusDeleted
+
 	s.Unwatch(c, c.literals[0].Opposite())
 	s.Unwatch(c, c.literals[1].Opposite())
 
-	*c.sliceRef = c.literals
-	freeSlice(c.sliceRef) // give the slice back for other clauses to use
+	// Cut the reference to the slice of literals so that it can be garbage
+	// collected even if the clause itself is still referenced.
+	c.literals = nil
 }
 
 func (c *Clause) Simplify(s *Solver) bool {
