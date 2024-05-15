@@ -47,9 +47,7 @@ func (vo *VarOrder) AddVar(initScore float64, initPhase bool) {
 // function must be called by the solver when v is being unassigned (e.g. when
 // a backtrack occurs) where val is the value the variable was assigned to.
 func (vo *VarOrder) Reinsert(v int, val LBool) {
-	if vo.phaseSaving {
-		vo.phases[v] = val
-	}
+	vo.phases[v] = val
 	act := vo.scores[v]
 	vo.order.Put(v, -act)
 }
@@ -90,7 +88,12 @@ func (vo *VarOrder) NextDecision(s *Solver) Literal {
 			continue // already assigned
 		}
 
-		switch vo.phases[next.Elem] {
+		phase := Unknown
+		if vo.phaseSaving {
+			phase = vo.phases[next.Elem]
+		}
+
+		switch phase {
 		case True:
 			return PositiveLiteral(next.Elem)
 		case False:
