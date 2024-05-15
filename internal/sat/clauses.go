@@ -103,8 +103,8 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 
 			maxLevel := -1
 			wl := -1
-			for i := 1; i < len(c.literals); i++ {
-				if level := s.assignLevels[c.literals[i].VarID()]; level > maxLevel {
+			for i, lit := range c.literals {
+				if level := s.assignLevels[lit.VarID()]; level > maxLevel {
 					maxLevel = level
 					wl = i
 				}
@@ -135,20 +135,20 @@ func (c *Clause) Delete(s *Solver) {
 }
 
 func (c *Clause) Simplify(s *Solver) bool {
-	j := 0
-	for i := 0; i < len(c.literals); i++ {
-		v := s.LitValue(c.literals[i])
+	k := 0
+	for _, lit := range c.literals {
+		v := s.LitValue(lit)
 		switch v {
 		case True:
 			return true
 		case False:
 			// discard the literal.
 		case Unknown:
-			c.literals[j] = c.literals[i]
-			j++
+			c.literals[k] = lit
+			k++
 		}
 	}
-	c.literals = c.literals[:j]
+	c.literals = c.literals[:k]
 	return false
 }
 
@@ -178,21 +178,21 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 	if c.prevPos >= len(c.literals) {
 		c.prevPos = 2
 	}
-	for i := c.prevPos; i < len(c.literals); i++ {
-		if s.LitValue(c.literals[i]) != False {
-			c.prevPos = i
-			c.literals[1] = c.literals[i]
-			c.literals[i] = l.Opposite()
-			s.Watch(c, c.literals[1].Opposite(), c.literals[0])
+	for i, lit := range c.literals[c.prevPos:] {
+		if s.LitValue(lit) != False {
+			c.prevPos += i
+			c.literals[1] = lit
+			c.literals[c.prevPos] = l.Opposite()
+			s.Watch(c, lit.Opposite(), c.literals[0])
 			return true
 		}
 	}
-	for i := 2; i < c.prevPos; i++ {
-		if s.LitValue(c.literals[i]) != False {
-			c.prevPos = i
-			c.literals[1] = c.literals[i]
-			c.literals[i] = l.Opposite()
-			s.Watch(c, c.literals[1].Opposite(), c.literals[0])
+	for i, lit := range c.literals[2:c.prevPos] {
+		if s.LitValue(lit) != False {
+			c.prevPos = i + 2
+			c.literals[1] = lit
+			c.literals[c.prevPos] = l.Opposite()
+			s.Watch(c, lit.Opposite(), c.literals[0])
 			return true
 		}
 	}

@@ -221,9 +221,9 @@ func (s *Solver) Watch(c *Clause, watch Literal, guard Literal) {
 // Unwatch removes clause c from the list of watchers.
 func (s *Solver) Unwatch(c *Clause, watch Literal) {
 	j := 0
-	for i := 0; i < len(s.watchers[watch]); i++ {
-		if s.watchers[watch][i].clause != c {
-			s.watchers[watch][j] = s.watchers[watch][i]
+	for _, w := range s.watchers[watch] {
+		if w.clause != c {
+			s.watchers[watch][j] = w
 			j++
 		}
 	}
@@ -272,11 +272,11 @@ func (s *Solver) Simplify() bool {
 func (s *Solver) simplifyPtr(clausesPtr *[]*Clause) {
 	clauses := *clausesPtr
 	j := 0
-	for i := 0; i < len(clauses); i++ {
-		if clauses[i].Simplify(s) {
-			clauses[i].Delete(s)
+	for _, c := range clauses {
+		if c.Simplify(s) {
+			c.Delete(s)
 		} else {
-			clauses[j] = clauses[i]
+			clauses[j] = c
 			j++
 		}
 	}
@@ -483,6 +483,7 @@ func (s *Solver) analyze(conflicting *Clause) ([]Literal, int, int) {
 func (s *Solver) computeLBD(literals []Literal) int {
 	lbd := 0
 	s.seenLevel.Clear()
+	s.seenLevel.Add(0)
 	for _, lit := range literals {
 		l := s.assignLevels[lit.VarID()]
 		if !s.seenLevel.Contains(l) {
