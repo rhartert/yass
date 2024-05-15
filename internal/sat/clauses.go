@@ -23,6 +23,12 @@ type Clause struct {
 	// This is only relevant to learnt clauses.
 	statusMask status
 
+	// This is used to speed-up the search for a new literal to watch by
+	// starting the search from the position at which the previous watched
+	// literal was swapped in (if such literal exists). This value must always
+	// be in [2, len(literals) - 1].
+	prevPos int
+
 	// The literal block distance used to estimate the quality of the clause.
 	lbd int
 }
@@ -85,9 +91,11 @@ func NewClause(s *Solver, tmpLiterals []Literal, learnt bool) (*Clause, bool) {
 		return nil, s.enqueue(tmpLiterals[0], nil)
 	default:
 		// Actually create the clause.
-		c := &Clause{}
+		c := &Clause{
+			prevPos:  2, // no previous literal
+			literals: make([]Literal, size),
+		}
 
-		c.literals = make([]Literal, size)
 		copy(c.literals, tmpLiterals)
 
 		if learnt {
@@ -160,10 +168,28 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 		return true
 	}
 
-	// Look for a new literal to watch. If another literal set to true is found,
-	// then the clause is already true.
-	for i := 2; i < len(c.literals); i++ {
+	// Look for a new literal to watch, starting from the position of the
+	// previous watched literal. If a True literal is found, then the clause
+	// is already true and no propagation is required.
+
+	// Reset the position to start the search from if it is not valid anymore.
+	// This can happen if the  previous watched literal was removed or moved
+	// during a clause simplification.
+	if c.prevPos >= len(c.literals) {
+		c.prevPos = 2
+	}
+	for i := c.prevPos; i < len(c.literals); i++ {
 		if s.LitValue(c.literals[i]) != False {
+			c.prevPos = i
+			c.literals[1] = c.literals[i]
+			c.literals[i] = l.Opposite()
+			s.Watch(c, c.literals[1].Opposite(), c.literals[0])
+			return true
+		}
+	}
+	for i := 2; i < c.prevPos; i++ {
+		if s.LitValue(c.literals[i]) != False {
+			c.prevPos = i
 			c.literals[1] = c.literals[i]
 			c.literals[i] = l.Opposite()
 			s.Watch(c, c.literals[1].Opposite(), c.literals[0])
@@ -171,7 +197,8 @@ func (c *Clause) Propagate(s *Solver, l Literal) bool {
 		}
 	}
 
-	// The first literal must be true if all other literals are false.
+	// Attempt to assign the first literal to True to satisfy the clause as all
+	// other literals in literals[1:] are False.
 	s.Watch(c, l, c.literals[0])
 	return s.enqueue(c.literals[0], c)
 }
