@@ -93,11 +93,12 @@ func run(cfg *config) error {
 		return fmt.Errorf("could not parse instance: %s", err)
 	}
 
-	s := sat.NewSolver(solverOptions(cfg))
-	dimacs.Instantiate(s, instance)
-
 	fmt.Printf("c variables:  %d\n", instance.Variables)
 	fmt.Printf("c clauses:    %d\n", len(instance.Clauses))
+
+	s := sat.NewSolver(solverOptions(cfg))
+	dimacs.Instantiate(s, instance)
+	instance = nil // garbage collect
 
 	t := time.Now()
 	status := s.Solve()
