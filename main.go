@@ -105,6 +105,7 @@ func run(cfg *config) error {
 
 	stats := s.Statistics
 	propagationsPerSec := float64(stats.Propagations) / elapsed.Seconds()
+	fmt.Printf("c\n")
 	fmt.Printf("c time (sec):   %f\n", elapsed.Seconds())
 	fmt.Printf("c conflicts:    %d (%.2f /sec)\n", stats.Conflicts, float64(stats.Conflicts)/elapsed.Seconds())
 	fmt.Printf("c propagations: %d (%.1f M /sec)\n", stats.Propagations, propagationsPerSec/1e6)

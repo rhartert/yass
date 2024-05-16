@@ -52,12 +52,16 @@ type Solver struct {
 	// List of watcher for each literal.
 	watchers [][]watcher
 
-	// Queue of recently assigned literal that still have to be propagated.
-	propQueue *Queue[Literal]
+	// Trail of chronologically assigned literals.
+	trail []Literal
 
-	// Trail.
-	trail    []Literal
-	trailLim []int
+	// Stack of positions in the trail corresponding to the different decision
+	// levels. It is empty if no decision has been made.
+	trailLevels []int
+
+	// Position of the next literal to propagate in the trail. All literals are
+	// propagated when propagated == len(trail).
+	propagated int
 
 	// Search statistics.
 	Statistics Statistics
@@ -135,7 +139,6 @@ func NewSolver(ops Options) *Solver {
 		clauseDecay:                ops.ClauseDecay,
 		clauseInc:                  1,
 		order:                      NewVarOrder(ops.VariableDecay, ops.PhaseSaving),
-		propQueue:                  NewQueue[Literal](128),
 		maxConflict:                -1,
 		timeout:                    -1,
 		conflictBeforeReduceInc:    2000,
@@ -254,9 +257,6 @@ func (s *Solver) Simplify() bool {
 	if l := s.decisionLevel(); l != 0 {
 		log.Fatalf("Simplify called on non root-level: %d", l)
 	}
-	if s.propQueue.Size() != 0 {
-		log.Fatal("propQueue should be empty when calling simplify")
-	}
 
 	if s.unsat || s.Propagate() != nil {
 		s.unsat = true
@@ -286,7 +286,7 @@ func (s *Solver) simplifyPtr(clausesPtr *[]*Clause) {
 }
 
 func (s *Solver) decisionLevel() int {
-	return len(s.trailLim)
+	return len(s.trailLevels)
 }
 
 func (s *Solver) Solve() LBool {
@@ -333,8 +333,9 @@ func (s *Solver) rescaleClauseActivitiesAndIncrement() {
 }
 
 func (s *Solver) Propagate() *Clause {
-	for s.propQueue.Size() > 0 {
-		l := s.propQueue.Pop()
+	for s.propagated < len(s.trail) {
+		l := s.trail[s.propagated]
+		s.propagated++
 
 		s.tmpWatchers = s.tmpWatchers[:0]
 		s.tmpWatchers = append(s.tmpWatchers, s.watchers[l]...)
@@ -362,7 +363,6 @@ func (s *Solver) Propagate() *Clause {
 			// Constraint is conflicting, copy remaining watchers
 			// and return the constraint.
 			s.watchers[l] = append(s.watchers[l], s.tmpWatchers[i+1:]...)
-			s.propQueue.Clear()
 			return w.clause
 		}
 	}
@@ -384,7 +384,6 @@ func (s *Solver) enqueue(l Literal, from *Clause) bool {
 		s.assignLevels[varID] = s.decisionLevel()
 		s.assignReasons[varID] = from
 		s.trail = append(s.trail, l)
-		s.propQueue.Push(l)
 		return true
 	}
 }
@@ -618,12 +617,13 @@ func (s *Solver) ReduceDB() {
 
 func (s *Solver) backtrackTo(level int) {
 	for s.decisionLevel() > level {
-		c := len(s.trail) - s.trailLim[len(s.trailLim)-1]
+		c := len(s.trail) - s.trailLevels[len(s.trailLevels)-1]
 		for ; c != 0; c-- {
 			s.unnassignedLast()
 		}
-		s.trailLim = s.trailLim[:len(s.trailLim)-1]
+		s.trailLevels = s.trailLevels[:len(s.trailLevels)-1]
 	}
+	s.propagated = len(s.trail)
 }
 
 func (s *Solver) unnassignedLast() {
@@ -640,7 +640,7 @@ func (s *Solver) unnassignedLast() {
 }
 
 func (s *Solver) assume(l Literal) bool {
-	s.trailLim = append(s.trailLim, len(s.trail))
+	s.trailLevels = append(s.trailLevels, len(s.trail))
 	return s.enqueue(l, nil)
 }
 
