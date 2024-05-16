@@ -366,7 +366,7 @@ func (s *Solver) Propagate() *Clause {
 			// and return the constraint.
 			s.watchers[l] = append(s.watchers[l], s.tmpWatchers[i+1:]...)
 			s.propQueue.Clear()
-			return s.tmpWatchers[i].clause
+			return w.clause
 		}
 	}
 
@@ -446,7 +446,7 @@ func (s *Solver) analyze(conflicting *Clause) ([]Literal, int, int) {
 		if c.isLearnt() && c.lbd > 2 {
 			// Opportunistically recompute the LBD of the clause as all its
 			// literals are guaranteed to be assigned at this point.
-			newLBD := s.computeLBD(c.literals)
+			newLBD := uint32(s.computeLBD(c.literals))
 
 			// Clauses with an improving LBD are considered interesting and
 			// worth protecting for a round.
@@ -505,7 +505,7 @@ func (s *Solver) record(clause []Literal, lbd int) {
 		}
 
 		s.learnts = append(s.learnts, c)
-		c.lbd = lbd
+		c.lbd = uint32(lbd)
 	}
 }
 
