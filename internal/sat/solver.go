@@ -14,6 +14,8 @@ type Statistics struct {
 	Iterations   uint64
 	Decisions    uint64
 	Restarts     uint64
+
+	AvgConflictDepth EMA
 }
 
 type Solver struct {
@@ -292,7 +294,9 @@ func (s *Solver) Solve() LBool {
 	status := Unknown
 
 	s.startTime = time.Now()
-	s.Statistics = Statistics{}
+	s.Statistics = Statistics{
+		AvgConflictDepth: NewEMA(0.999),
+	}
 
 	for status == Unknown {
 		status = s.Search(numConflicts)
@@ -520,6 +524,7 @@ func (s *Solver) Search(nConflicts uint64) LBool {
 
 		if conflict := s.Propagate(); conflict != nil {
 			s.Statistics.Conflicts++
+			s.Statistics.AvgConflictDepth.Add(float64(s.decisionLevel()))
 
 			if s.decisionLevel() == 0 {
 				s.unsat = true
@@ -655,9 +660,9 @@ func (s *Solver) saveModel() {
 }
 
 const statsHeader = `c
-c --------------------------------------------
-c        time  conflicts   restarts    learnts
-c --------------------------------------------`
+c ------------------------------------------------------
+c       time  conflicts   restarts    learnts     clevel
+c ------------------------------------------------------`
 
 func (s *Solver) printSearchStats() {
 	if s.printCount%20 == 0 {
@@ -666,9 +671,11 @@ func (s *Solver) printSearchStats() {
 
 	s.printCount++
 	fmt.Printf(
-		"c %10.2fs %10d %10d %10d\n",
+		"c %9.2fs %10d %10d %10d %10.2f\n",
 		time.Since(s.startTime).Seconds(),
 		s.Statistics.Conflicts,
 		s.Statistics.Restarts,
-		len(s.learnts))
+		len(s.learnts),
+		s.Statistics.AvgConflictDepth.Val(),
+	)
 }
