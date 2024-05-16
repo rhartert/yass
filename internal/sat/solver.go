@@ -89,13 +89,13 @@ type Solver struct {
 
 	// Shared by operation that needs to put variables in a set and empty that
 	// set efficiently.
-	seenVar *ResetSet
+	seenVar ResetSet
 
 	// Shared by operation that needs to put the decision levels in a set and
 	// empty that set efficiently. This could technically be done using seenVar
 	// but some operations (e.g. analyze) needs to maintain both set at the same
 	// time.
-	seenLevel *ResetSet
+	seenLevel ResetSet
 
 	printCount int
 }
@@ -143,8 +143,6 @@ func NewSolver(ops Options) *Solver {
 		timeout:                    -1,
 		conflictBeforeReduceInc:    2000,
 		conflictBeforeReduceIncInc: 300,
-		seenLevel:                  &ResetSet{},
-		seenVar:                    &ResetSet{},
 		tmpLearnts:                 make([]Literal, 0, 32),
 		tmpReason:                  make([]Literal, 0, 32),
 	}
