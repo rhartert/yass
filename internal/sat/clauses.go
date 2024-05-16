@@ -19,10 +19,6 @@ type Clause struct {
 	// clause is active, it is nil if the clause has been marked as deleted.
 	literals []Literal
 
-	// If true, the clause will not be deleted in the next clause DB clean up.
-	// This is only relevant to learnt clauses.
-	statusMask status
-
 	// This is used to speed-up the search for a new literal to watch by
 	// starting the search from the position at which the previous watched
 	// literal was swapped in (if such literal exists). This value must always
@@ -30,7 +26,11 @@ type Clause struct {
 	prevPos int
 
 	// The literal block distance used to estimate the quality of the clause.
-	lbd int
+	lbd uint32
+
+	// If true, the clause will not be deleted in the next clause DB clean up.
+	// This is only relevant to learnt clauses.
+	statusMask status
 }
 
 func (c *Clause) isProtected() bool {
