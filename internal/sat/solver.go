@@ -92,6 +92,8 @@ type Solver struct {
 	// but some operations (e.g. analyze) needs to maintain both set at the same
 	// time.
 	seenLevel *ResetSet
+
+	printCount int
 }
 
 // watcher represents a clause attached to the watch list of a literal.
@@ -294,10 +296,6 @@ func (s *Solver) Solve() LBool {
 	s.startTime = time.Now()
 	s.Statistics = Statistics{}
 
-	s.printSeparator()
-	s.printSearchHeader()
-	s.printSeparator()
-
 	for status == Unknown {
 		status = s.Search(numConflicts)
 		numConflicts += 1000
@@ -308,7 +306,6 @@ func (s *Solver) Solve() LBool {
 	}
 
 	s.printSearchStats()
-	s.printSeparator()
 
 	s.backtrackTo(0)
 	return status
@@ -659,19 +656,20 @@ func (s *Solver) saveModel() {
 	s.Models = append(s.Models, model)
 }
 
-func (s *Solver) printSeparator() {
-	fmt.Println("c ---------------------------------------------------------------------------")
-}
-
-func (s *Solver) printSearchHeader() {
-	fmt.Println("c            time     iterations      conflicts       restarts        learnts")
-}
+const statsHeader = `c
+c --------------------------------------------
+c        time  conflicts   restarts    learnts
+c --------------------------------------------`
 
 func (s *Solver) printSearchStats() {
+	if s.printCount%20 == 0 {
+		fmt.Println(statsHeader)
+	}
+
+	s.printCount++
 	fmt.Printf(
-		"c %14.3fs %14d %14d %14d %14d\n",
+		"c %10.2fs %10d %10d %10d\n",
 		time.Since(s.startTime).Seconds(),
-		s.Statistics.Iterations,
 		s.Statistics.Conflicts,
 		s.Statistics.Restarts,
 		len(s.learnts))
