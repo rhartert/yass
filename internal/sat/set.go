@@ -3,8 +3,8 @@ package sat
 // ResetSet represents a set of integers from 0 to N-1 where N is the capacity
 // of the set.
 type ResetSet struct {
-	addedAt        []uint64
-	addedTimestamp uint64
+	addedAt        []uint16
+	addedTimestamp uint16
 }
 
 // Contains returns true if v is in the set.
