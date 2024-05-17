@@ -8,14 +8,14 @@ import (
 )
 
 type Statistics struct {
-	Propagations uint64
-	Guards       uint64
-	Conflicts    uint64
-	Iterations   uint64
-	Decisions    uint64
-	Restarts     uint64
-
-	AvgConflictDepth EMA
+	Propagations     uint64
+	Guards           uint64
+	Conflicts        uint64
+	Iterations       uint64
+	Decisions        uint64
+	Restarts         uint64
+	TotalCoreLBD     uint64
+	AvgConflictLevel EMA
 }
 
 type Solver struct {
@@ -36,7 +36,9 @@ type Solver struct {
 
 	// Clause database.
 	constraints []*Clause
-	learnts     []*Clause
+	cores       []*Clause
+	locals      []*Clause
+
 	clauseInc   float64
 	clauseDecay float64
 
@@ -143,8 +145,9 @@ func NewSolver(ops Options) *Solver {
 		order:                      NewVarOrder(ops.VariableDecay, ops.PhaseSaving),
 		maxConflict:                -1,
 		timeout:                    -1,
-		conflictBeforeReduceInc:    2000,
-		conflictBeforeReduceIncInc: 300,
+		conflictBeforeReduce:       20000,
+		conflictBeforeReduceInc:    20000,
+		conflictBeforeReduceIncInc: 0,
 		tmpLearnts:                 make([]Literal, 0, 32),
 		tmpReason:                  make([]Literal, 0, 32),
 	}
@@ -188,7 +191,7 @@ func (s *Solver) NumConstraints() int {
 }
 
 func (s *Solver) NumLearnts() int {
-	return len(s.learnts)
+	return len(s.locals)
 }
 
 func (s *Solver) VarValue(x int) LBool {
@@ -263,7 +266,7 @@ func (s *Solver) Simplify() bool {
 		return false
 	}
 
-	s.simplifyPtr(&s.learnts)
+	s.simplifyPtr(&s.locals)
 	s.simplifyPtr(&s.constraints) // could be turned off
 
 	return true
@@ -295,7 +298,7 @@ func (s *Solver) Solve() LBool {
 
 	s.startTime = time.Now()
 	s.Statistics = Statistics{
-		AvgConflictDepth: NewEMA(0.999),
+		AvgConflictLevel: NewEMA(0.9999),
 	}
 
 	for status == Unknown {
@@ -329,7 +332,7 @@ func (s *Solver) DecayClaActivity() {
 
 func (s *Solver) rescaleClauseActivitiesAndIncrement() {
 	s.clauseInc *= 1e-100 // important to keep proportions
-	for _, l := range s.learnts {
+	for _, l := range s.locals {
 		l.activity *= 1e-100
 	}
 }
@@ -502,7 +505,7 @@ func (s *Solver) record(clause []Literal, lbd int) {
 			s.order.BumpScore(l.VarID())
 		}
 
-		s.learnts = append(s.learnts, c)
+		s.locals = append(s.locals, c)
 		c.lbd = uint32(lbd)
 	}
 }
@@ -524,7 +527,7 @@ func (s *Solver) Search(nConflicts uint64) LBool {
 
 		if conflict := s.Propagate(); conflict != nil {
 			s.Statistics.Conflicts++
-			s.Statistics.AvgConflictDepth.Add(float64(s.decisionLevel()))
+			s.Statistics.AvgConflictLevel.Add(float64(s.decisionLevel()))
 
 			if s.decisionLevel() == 0 {
 				s.unsat = true
@@ -574,33 +577,29 @@ func (s *Solver) Search(nConflicts uint64) LBool {
 }
 
 func (s *Solver) ReduceDB() {
-	// Sort learnt clauses from "the worst" to "the best".
-	sort.Slice(s.learnts, func(i, j int) bool {
-		ci := s.learnts[i]
-		cj := s.learnts[j]
-
-		switch {
-		case len(ci.literals) > 2 && len(cj.literals) == 2:
-			return true
-		case ci.lbd > cj.lbd:
-			return true
-		case ci.activity < cj.activity:
-			return true
-		default:
-			return false
+	// Collect core clauses.
+	k := 0
+	for _, c := range s.locals {
+		if c.lbd <= 5 {
+			s.cores = append(s.cores, c)
+			s.Statistics.TotalCoreLBD += uint64(c.lbd)
+		} else {
+			s.locals[k] = c
+			k += 1
 		}
+	}
+	s.locals = s.locals[:k]
+
+	// Sort learnt clauses from "the worst" to "the best".
+	sort.Slice(s.locals, func(i, j int) bool {
+		return s.locals[i].activity < s.locals[j].activity
 	})
 
-	// Protect the 10% best clause.
-	for i := len(s.learnts) * 90 / 100; i < len(s.learnts); i++ {
-		s.learnts[i].setProtected()
-	}
-
-	toDelete := len(s.learnts) / 2
+	toDelete := len(s.locals) / 2
 
 	i, j := 0, 0
-	for ; i < len(s.learnts); i++ {
-		c := s.learnts[i]
+	for ; i < len(s.locals); i++ {
+		c := s.locals[i]
 
 		if toDelete > 0 && !c.locked(s) && c.lbd > 2 && len(c.literals) > 2 && !c.isProtected() {
 			toDelete--
@@ -610,12 +609,12 @@ func (s *Solver) ReduceDB() {
 				c.setUnprotected()
 				toDelete++
 			}
-			s.learnts[j] = s.learnts[i]
+			s.locals[j] = s.locals[i]
 			j++
 		}
 	}
 
-	s.learnts = s.learnts[:j]
+	s.locals = s.locals[:j]
 }
 
 func (s *Solver) backtrackTo(level int) {
@@ -675,7 +674,7 @@ func (s *Solver) printSearchStats() {
 		time.Since(s.startTime).Seconds(),
 		s.Statistics.Conflicts,
 		s.Statistics.Restarts,
-		len(s.learnts),
-		s.Statistics.AvgConflictDepth.Val(),
+		len(s.locals),
+		s.Statistics.AvgConflictLevel.Val(),
 	)
 }
