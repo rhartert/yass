@@ -5,30 +5,46 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/rhartert/yass/internal/sat"
 )
 
-var testInstance = Instance{
+type instance struct {
+	Variables int
+	Clauses   [][]sat.Literal
+}
+
+func (i *instance) AddVariable() int {
+	i.Variables++
+	return i.Variables - 1
+}
+
+func (i *instance) AddClause(tmpClause []sat.Literal) error {
+	clause := make([]sat.Literal, len(tmpClause))
+	copy(clause, tmpClause)
+	i.Clauses = append(i.Clauses, clause)
+	return nil
+}
+
+var want = instance{
 	Variables: 3,
-	Clauses: [][]int{
-		{1, 2, 3},
-		{1, 2, -3},
-		{1, -2, 3},
-		{-1, 2, 3},
-		{-1, -2, 3},
-		{-1, 2, -3},
-		{1, -2, -3},
-		{-1, -2, -3},
+	Clauses: [][]sat.Literal{
+		{0, 2, 4},
+		{0, 2, 5},
+		{0, 3, 4},
+		{1, 2, 4},
+		{1, 3, 4},
+		{1, 2, 5},
+		{0, 3, 5},
+		{1, 3, 5},
 	},
-	Comments: []string{"c minialist unsat instance"},
 }
 
 func TestParseDIMACS_cnf(t *testing.T) {
-	want := &testInstance
+	got := instance{}
+	gotErr := LoadDIMACS("testdata/test_instance.cnf", false, &got)
 
-	got, err := ParseDIMACS("testdata/test_instance.cnf", false)
-
-	if err != nil {
-		t.Errorf("ParseDIMACS(): want no error, got %s", err)
+	if gotErr != nil {
+		t.Errorf("ParseDIMACS(): want no error, got %s", gotErr)
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("ParseDIMACS(): mismatch (+want, -got):\n%s", diff)
@@ -36,12 +52,11 @@ func TestParseDIMACS_cnf(t *testing.T) {
 }
 
 func TestParseDIMACS_gzip(t *testing.T) {
-	want := &testInstance
+	got := instance{}
+	gotErr := LoadDIMACS("testdata/test_instance.cnf.gz", true, &got)
 
-	got, err := ParseDIMACS("testdata/test_instance.cnf.gz", true)
-
-	if err != nil {
-		t.Errorf("ParseDIMACS(): want no error, got %s", err)
+	if gotErr != nil {
+		t.Errorf("ParseDIMACS(): want no error, got %s", gotErr)
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("ParseDIMACS(): mismatch (+want, -got):\n%s", diff)
@@ -49,23 +64,19 @@ func TestParseDIMACS_gzip(t *testing.T) {
 }
 
 func TestParseDIMACS_noFile(t *testing.T) {
-	got, err := ParseDIMACS("", false)
+	got := instance{}
+	gotErr := LoadDIMACS("", false, &got)
 
-	if err == nil {
+	if gotErr == nil {
 		t.Errorf("ParseDIMACS(): want error, got none")
-	}
-	if got != nil {
-		t.Errorf("ParseDIMACS(): want nil instance, got %+v", got)
 	}
 }
 
 func TestParseDIMACS_gzip_notGzipFile(t *testing.T) {
-	got, err := ParseDIMACS("testdata/test_instance.cnf", true)
+	got := instance{}
+	gotErr := LoadDIMACS("testdata/test_instance.cnf", true, &got)
 
-	if err == nil {
+	if gotErr == nil {
 		t.Errorf("ParseDIMACS(): want error, got none")
-	}
-	if got != nil {
-		t.Errorf("ParseDIMACS(): want nil instance, got %+v", got)
 	}
 }

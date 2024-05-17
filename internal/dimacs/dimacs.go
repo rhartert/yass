@@ -12,124 +12,99 @@ import (
 	"github.com/rhartert/yass/internal/sat"
 )
 
-type Instance struct {
-	Variables int
-	Clauses   [][]int
-	Comments  []string
+type dimacsWritter interface {
+	AddVariable() int
+	AddClause([]sat.Literal) error
 }
 
-func ParseDIMACS(filename string, gzipped bool) (*Instance, error) {
+func reader(filename string, gzipped bool) (io.ReadCloser, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
-
-	reader := io.Reader(file)
+	rc := io.ReadCloser(file)
 	if gzipped {
-		reader, err = gzip.NewReader(reader)
+		rc, err = gzip.NewReader(rc)
 		if err != nil {
 			return nil, err
 		}
 	}
+	return rc, nil
+}
 
-	instance := &Instance{}
+func LoadDIMACS(filename string, gzipped bool, dw dimacsWritter) error {
+	reader, err := reader(filename, gzipped)
+	if err != nil {
+		return fmt.Errorf("error reading file %q: %s", filename, err)
+	}
+	defer reader.Close()
+
 	scanner := bufio.NewScanner(reader)
-	stop := false
-	for i := 0; scanner.Scan() && !stop; i++ {
+
+	// Parse header and variables
+	// --------------------------
+
+	nVars := 0
+	nClauses := 0
+
+	for {
+		if !scanner.Scan() {
+			return fmt.Errorf("header line not found")
+		}
 		line := scanner.Text()
-		if line == "" {
+		if line == "" || line[0] == 'c' {
+			continue
+		}
+		parts := strings.Fields(line)
+		if parts[1] != "cnf" {
+			return fmt.Errorf("instance of type %q are not supported", parts[1])
+		}
+		nVars, err = strconv.Atoi(parts[2])
+		if err != nil {
+			return fmt.Errorf("could not parse header: %w", err)
+		}
+		nClauses, err = strconv.Atoi(parts[3])
+		if err != nil {
+			return fmt.Errorf("could not parse header: %w", err)
+		}
+
+		break
+	}
+
+	for range nVars {
+		dw.AddVariable()
+	}
+
+	// Parse clauses
+	// -------------
+
+	litBuffer := make([]sat.Literal, 32)
+	for nClauses > 0 && scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || line[0] == 'c' {
 			continue
 		}
 
-		switch line[0] {
-		case '%': // end of instance
-			stop = true
-		case 'c':
-			if err := parseCommentLine(instance, line); err != nil {
-				return nil, err
+		litBuffer = litBuffer[:0] // reset
+		parts := strings.Fields(line)
+		for _, p := range parts {
+			l, err := strconv.Atoi(p)
+			if err != nil {
+				return err
 			}
-		case 'p':
-			if err := parseHeaderLine(instance, line); err != nil {
-				return nil, err
-			}
-		default:
-			if err := parseClauseLine(instance, line); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return instance, nil
-}
-
-// Instantiate adds the instance's variables and clauses to solver s.
-func Instantiate(s *sat.Solver, instance *Instance) error {
-	for i := 0; i < instance.Variables; i++ {
-		s.AddVariable()
-	}
-	for _, c := range instance.Clauses {
-		clause := []sat.Literal{}
-		for _, v := range c {
-			if v < 0 {
-				clause = append(clause, sat.NegativeLiteral(-v-1))
-			} else {
-				clause = append(clause, sat.PositiveLiteral(v-1))
+			switch {
+			case l < 0:
+				litBuffer = append(litBuffer, sat.NegativeLiteral(-l-1))
+			case l > 0:
+				litBuffer = append(litBuffer, sat.PositiveLiteral(l-1))
+			default:
+				// drop 0
 			}
 		}
-		s.AddClause(clause)
+
+		dw.AddClause(litBuffer)
+		nClauses--
 	}
 
 	return nil
-}
-
-func parseCommentLine(instance *Instance, line string) error {
-	instance.Comments = append(instance.Comments, line)
-	return nil
-}
-
-func parseHeaderLine(instance *Instance, line string) error {
-	if instance.Clauses != nil {
-		return fmt.Errorf("found a second header line %q", line)
-	}
-	parts := strings.Fields(line)
-	if parts[1] != "cnf" {
-		return fmt.Errorf("instance of type %q are not supported", parts[1])
-	}
-	nVar, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return fmt.Errorf("could not parse header: %w", err)
-	}
-	instance.Variables = nVar
-	nClauses, err := strconv.Atoi(parts[3])
-	if err != nil {
-		return fmt.Errorf("could not parse header: %w", err)
-	}
-	instance.Clauses = make([][]int, 0, nClauses)
-	return nil
-}
-
-func parseClauseLine(instance *Instance, line string) error {
-	if instance.Clauses == nil {
-		return fmt.Errorf("found clause line before header %q", line)
-	}
-	c, err := parseClause(line)
-	if err != nil {
-		return fmt.Errorf("could not parse clause %q: %w", line, err)
-	}
-	instance.Clauses = append(instance.Clauses, c)
-	return nil
-}
-
-func parseClause(line string) ([]int, error) {
-	parts := strings.Fields(line)
-	literals := make([]int, len(parts)-1)
-	for i, p := range parts[:len(literals)] {
-		l, err := strconv.Atoi(p)
-		if err != nil {
-			return nil, err
-		}
-		literals[i] = l
-	}
-	return literals, nil
 }

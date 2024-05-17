@@ -301,6 +301,9 @@ func (s *Solver) Solve() LBool {
 		AvgConflictLevel: NewEMA(0.9999),
 	}
 
+	fmt.Printf("c variables: %d\n", s.NumVariables())
+	fmt.Printf("c clauses:   %d\n", s.NumConstraints())
+
 	for status == Unknown {
 		status = s.Search(numConflicts)
 		numConflicts += 1000

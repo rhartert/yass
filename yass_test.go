@@ -91,9 +91,7 @@ func toSet(s [][]bool) map[string]struct{} {
 }
 
 // solveAll returns an unordered list of all the instance's models.
-func solveAll(instance *dimacs.Instance) [][]bool {
-	s := sat.NewDefaultSolver()
-	dimacs.Instantiate(s, instance)
+func solveAll(s *sat.Solver) [][]bool {
 	for s.Solve() == sat.True {
 		// Add a new clause to forbid the last model found. Note that literal
 		// must be flipped: !(a ^ b ^ c) corresponds to (!a v !b v !c).
@@ -123,16 +121,16 @@ func TestSolveAll(t *testing.T) {
 		t.Run(tc.instanceName, func(t *testing.T) {
 			t.Parallel()
 
-			instance, err := dimacs.ParseDIMACS(tc.instanceFile, false)
-			if err != nil {
-				t.Errorf("Instance parsing error: %s", err)
-			}
 			want, err := dimacs.ParseModels(tc.modelsFile)
 			if err != nil {
 				t.Errorf("Model parsing error: %s", err)
 			}
+			s := sat.NewDefaultSolver()
+			if err := dimacs.LoadDIMACS(tc.instanceFile, false, s); err != nil {
+				t.Errorf("Instance parsing error: %s", err)
+			}
 
-			got := solveAll(instance)
+			got := solveAll(s)
 
 			if len(got) != len(want) {
 				t.Errorf("Incorrect number of models: got %d, want %d", len(got), len(want))

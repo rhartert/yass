@@ -88,28 +88,28 @@ func solverOptions(cfg *config) sat.Options {
 }
 
 func run(cfg *config) error {
-	instance, err := dimacs.ParseDIMACS(cfg.instanceFile, cfg.gzippedFile)
-	if err != nil {
-		return fmt.Errorf("could not parse instance: %s", err)
+	s := sat.NewSolver(solverOptions(cfg))
+
+	tRead := time.Now()
+	if err := dimacs.LoadDIMACS(cfg.instanceFile, cfg.gzippedFile, s); err != nil {
+		return fmt.Errorf("could not load instance: %s", err)
 	}
 
-	fmt.Printf("c variables:  %d\n", instance.Variables)
-	fmt.Printf("c clauses:    %d\n", len(instance.Clauses))
-
-	s := sat.NewSolver(solverOptions(cfg))
-	dimacs.Instantiate(s, instance)
-	instance = nil // garbage collect
-
-	t := time.Now()
+	tSolve := time.Now()
 	status := s.Solve()
-	elapsed := time.Since(t)
+	tCompleted := time.Now()
 
 	stats := s.Statistics
-	propagationsPerSec := float64(stats.Propagations) / elapsed.Seconds()
+	readDur := tSolve.Sub(tRead).Seconds()
+	solveDur := tCompleted.Sub(tSolve).Seconds()
+	propagationsFreq := float64(stats.Propagations) / solveDur
+	conflictsFreq := float64(stats.Conflicts) / solveDur
+
 	fmt.Printf("c\n")
-	fmt.Printf("c time (sec):   %f\n", elapsed.Seconds())
-	fmt.Printf("c conflicts:    %d (%.2f /sec)\n", stats.Conflicts, float64(stats.Conflicts)/elapsed.Seconds())
-	fmt.Printf("c propagations: %d (%.1f M /sec)\n", stats.Propagations, propagationsPerSec/1e6)
+	fmt.Printf("c read time:    %.3f sec\n", readDur)
+	fmt.Printf("c solve time:   %.3f sec\n", solveDur)
+	fmt.Printf("c conflicts:    %d (%.2f /sec)\n", stats.Conflicts, conflictsFreq)
+	fmt.Printf("c propagations: %d (%.2f M/sec)\n", stats.Propagations, propagationsFreq/1e6)
 	fmt.Printf("c status:       %s\n", status.String())
 
 	return nil
