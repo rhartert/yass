@@ -310,7 +310,7 @@ func (s *Solver) Solve() LBool {
 		}
 	}
 
-	s.printSearchStats()
+	s.printSearchStats(' ')
 
 	s.backtrackTo(0)
 	return status
@@ -521,7 +521,7 @@ func (s *Solver) Search(nConflicts uint64) LBool {
 
 	for !s.shouldStop() {
 		if s.Statistics.Iterations%100000 == 0 {
-			s.printSearchStats()
+			s.printSearchStats(' ')
 		}
 		s.Statistics.Iterations++
 
@@ -556,6 +556,7 @@ func (s *Solver) Search(nConflicts uint64) LBool {
 			s.conflictBeforeReduceInc += s.conflictBeforeReduceIncInc
 			s.conflictBeforeReduce += s.conflictBeforeReduceInc
 			s.ReduceDB()
+			s.printSearchStats('C')
 		}
 
 		if s.NumAssigns() == s.NumVariables() { // solution found
@@ -566,6 +567,7 @@ func (s *Solver) Search(nConflicts uint64) LBool {
 
 		if s.Statistics.Conflicts > conflictLimit {
 			s.backtrackTo(0)
+			s.printSearchStats('R')
 			return Unknown
 		}
 
@@ -659,22 +661,24 @@ func (s *Solver) saveModel() {
 }
 
 const statsHeader = `c
-c ------------------------------------------------------
-c       time  conflicts   restarts    learnts     clevel
-c ------------------------------------------------------`
+c -------------------------------------------------------------------
+c         time  #conflict     #local      #core   core-lbd     clevel
+c -------------------------------------------------------------------`
 
-func (s *Solver) printSearchStats() {
+func (s *Solver) printSearchStats(event byte) {
 	if s.printCount%20 == 0 {
 		fmt.Println(statsHeader)
 	}
 
 	s.printCount++
 	fmt.Printf(
-		"c %9.2fs %10d %10d %10d %10.2f\n",
+		"c %s %9.2fs %10d %10d %10d %10.2f %9.2f%%\n",
+		string(event),
 		time.Since(s.startTime).Seconds(),
 		s.Statistics.Conflicts,
-		s.Statistics.Restarts,
 		len(s.locals),
-		s.Statistics.AvgConflictLevel.Val(),
+		len(s.cores),
+		float64(s.Statistics.TotalCoreLBD)/float64(len(s.cores)),
+		s.Statistics.AvgConflictLevel.Val()*100/float64(s.NumVariables()),
 	)
 }
