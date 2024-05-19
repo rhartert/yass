@@ -1,4 +1,6 @@
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+github.com/rhartert/dimacs v0.1.0 h1:SNZ/b6z4DpUCX69I8UcC3r31VbENQC2SFL+f7kwSWHc=
+github.com/rhartert/dimacs v0.1.0/go.mod h1:+5zFa+SBN9tQMjYVHQWiRAQTQdGLTaFKUa2h/SsW/Ps=
 github.com/rhartert/yagh v0.5.0 h1:Yzk3OGYipjXTs0PyaQ+22+8JmXAE8yHvHauX3EWNS4Y=
 github.com/rhartert/yagh v0.5.0/go.mod h1:INOoPnLEKdV3MwE3mRvQS/iH0xVpNTYKM/UBYPYiQUA=

@@ -1,12 +1,33 @@
 package dimacs
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
+
+	"github.com/rhartert/dimacs"
 )
+
+// builder wraps the solver to implement dimacs.Builder.
+type modelBuilder struct {
+	models [][]bool
+}
+
+func (b *modelBuilder) Problem(problem string, nVars int, nClauses int) error {
+	return fmt.Errorf("model files should not have problem lines")
+}
+
+func (b *modelBuilder) Comment(_ string) error {
+	return nil // ignore comments
+}
+
+func (b *modelBuilder) Clause(tmpClause []int) error {
+	model := make([]bool, len(tmpClause))
+	for i, l := range tmpClause {
+		model[i] = l > 0
+	}
+	b.models = append(b.models, model)
+	return nil
+}
 
 func ParseModels(filename string) ([][]bool, error) {
 	file, err := os.Open(filename)
@@ -15,30 +36,10 @@ func ParseModels(filename string) ([][]bool, error) {
 	}
 	defer file.Close()
 
-	models := [][]bool{}
-	scanner := bufio.NewScanner(file)
-	for i := 0; scanner.Scan(); i++ {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-
-		literals := strings.Fields(line)
-		model := make([]bool, 0, len(literals))
-
-		for _, ls := range literals {
-			if ls == "0" {
-				continue
-			}
-			l, err := strconv.Atoi(ls)
-			if err != nil {
-				return nil, fmt.Errorf("error parsing literal %s: %w", ls, err)
-			}
-			model = append(model, l > 0)
-		}
-
-		models = append(models, model)
+	b := &modelBuilder{}
+	if err := dimacs.ReadBuilder(file, b); err != nil {
+		return nil, err
 	}
 
-	return models, nil
+	return b.models, nil
 }
