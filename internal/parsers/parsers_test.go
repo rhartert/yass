@@ -1,4 +1,4 @@
-package dimacs
+package parsers
 
 import (
 	_ "embed"

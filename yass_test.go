@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/rhartert/yass/internal/dimacs"
+	"github.com/rhartert/yass/internal/parsers"
 	"github.com/rhartert/yass/internal/sat"
 )
 
@@ -121,12 +121,12 @@ func TestSolveAll(t *testing.T) {
 		t.Run(tc.instanceName, func(t *testing.T) {
 			t.Parallel()
 
-			want, err := dimacs.ParseModels(tc.modelsFile)
+			want, err := parsers.ReadModels(tc.modelsFile)
 			if err != nil {
 				t.Errorf("Model parsing error: %s", err)
 			}
 			s := sat.NewDefaultSolver()
-			if err := dimacs.LoadDIMACS(tc.instanceFile, false, s); err != nil {
+			if err := parsers.LoadDIMACS(tc.instanceFile, false, s); err != nil {
 				t.Errorf("Instance parsing error: %s", err)
 			}
 

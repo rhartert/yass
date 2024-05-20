@@ -8,7 +8,7 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"github.com/rhartert/yass/internal/dimacs"
+	"github.com/rhartert/yass/internal/parsers"
 	"github.com/rhartert/yass/internal/sat"
 )
 
@@ -91,7 +91,7 @@ func run(cfg *config) error {
 	s := sat.NewSolver(solverOptions(cfg))
 
 	tRead := time.Now()
-	if err := dimacs.LoadDIMACS(cfg.instanceFile, cfg.gzippedFile, s); err != nil {
+	if err := parsers.LoadDIMACS(cfg.instanceFile, cfg.gzippedFile, s); err != nil {
 		return fmt.Errorf("could not load instance: %s", err)
 	}
 
