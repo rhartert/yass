@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/rhartert/yass/internal/sat"
+	"github.com/rhartert/yass/sat"
 )
 
 type instance struct {

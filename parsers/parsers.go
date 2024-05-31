@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/rhartert/dimacs"
-	"github.com/rhartert/yass/internal/sat"
+	"github.com/rhartert/yass/sat"
 )
 
 type SATSolver interface {

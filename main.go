@@ -8,8 +8,8 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"github.com/rhartert/yass/internal/parsers"
-	"github.com/rhartert/yass/internal/sat"
+	"github.com/rhartert/yass/parsers"
+	"github.com/rhartert/yass/sat"
 )
 
 var flagCPUProfile = flag.Bool(

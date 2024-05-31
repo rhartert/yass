@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/rhartert/yass/internal/parsers"
-	"github.com/rhartert/yass/internal/sat"
+	"github.com/rhartert/yass/parsers"
+	"github.com/rhartert/yass/sat"
 )
 
 // This test suite evaluates the correctness of YASS by verifying that the
