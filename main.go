@@ -140,7 +140,6 @@ func main() {
 			log.Fatal(err)
 		}
 		pprof.WriteHeapProfile(f)
-		f.Close()
-		return
+		defer f.Close()
 	}
 }
